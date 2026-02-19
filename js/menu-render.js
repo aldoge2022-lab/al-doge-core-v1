@@ -78,5 +78,9 @@
       state.size = data.size_engine.default;
       renderSizeSelector();
       renderMenu();
+    })
+    .catch(function (error) {
+      console.error(error);
+      document.getElementById('menu').textContent = 'Errore nel caricamento del menu';
     });
 })();
