@@ -45,7 +45,8 @@ function extractItems(text) {
 
   for (const item in MENU) {
     if (lower.includes(item)) {
-      const regex = new RegExp(`(\\d+)\\s*(x)?\\s*${item}`);
+      const escapedItem = item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`(\\d+)\\s*(x)?\\s*${escapedItem}`);
       const match = lower.match(regex);
       const qty = match ? parseInt(match[1], 10) : 1;
 
