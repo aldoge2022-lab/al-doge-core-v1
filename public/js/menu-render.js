@@ -71,7 +71,7 @@
     });
   }
 
-  fetch('data/menu.json')
+  fetch('/data/menu.json')
     .then((response) => response.json())
     .then((data) => {
       state.data = data;
