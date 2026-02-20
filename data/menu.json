@@ -1,0 +1,29 @@
+{
+  "size_engine": {
+    "default": "normale",
+    "options": {
+      "normale": {
+        "label": "Normale",
+        "surcharge_cents": 0
+      },
+      "maxi": {
+        "label": "Maxi",
+        "surcharge_cents": 200
+      }
+    }
+  },
+  "menu": [
+    {
+      "id": "margherita",
+      "name": "Pizza Margherita",
+      "base_price_cents": 700,
+      "active": true
+    },
+    {
+      "id": "diavola",
+      "name": "Pizza Diavola",
+      "base_price_cents": 850,
+      "active": true
+    }
+  ]
+}
