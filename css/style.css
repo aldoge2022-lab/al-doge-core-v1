@@ -7,7 +7,6 @@
   --text-light: #f5f5f5;
   --text-muted: #9a9a9a;
 }
-
 * {
   box-sizing: border-box;
 }
@@ -117,5 +116,4 @@ button:hover {
   text-align: center;
   font-size: 12px;
   color: var(--text-muted);
-} 
- 
+}
