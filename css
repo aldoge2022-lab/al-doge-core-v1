@@ -1,2 +1,120 @@
 
-css/style.css
+
+:root {
+  --bg-main: #0f1115;
+  --bg-card: #1a1d23;
+  --gold: #c9a96e;
+  --text-light: #f5f5f5;
+  --text-muted: #9a9a9a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg-main);
+  color: var(--text-light);
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.header {
+  background: #0b0d11;
+  border-bottom: 1px solid #222;
+  text-align: center;
+  padding: 40px 0;
+}
+
+.logo {
+  font-family: 'Playfair Display', serif;
+  font-size: 42px;
+  letter-spacing: 2px;
+  color: var(--gold);
+  margin: 0;
+}
+
+.subtitle {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.menu-controls {
+  margin-bottom: 40px;
+}
+
+select {
+  background: var(--bg-card);
+  color: var(--text-light);
+  border: 1px solid #333;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-left: 10px;
+}
+
+.surcharge {
+  margin-top: 10px;
+  color: var(--text-muted);
+}
+
+.menu-grid {
+  display: grid;
+  gap: 20px;
+}
+
+.menu-item {
+  background: var(--bg-card);
+  padding: 20px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: 0.2s ease;
+}
+
+.menu-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+}
+
+.menu-name {
+  font-weight: 600;
+}
+
+.menu-price {
+  color: var(--gold);
+  margin-left: 15px;
+}
+
+button {
+  background: var(--gold);
+  border: none;
+  color: #000;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+button:hover {
+  background: #e5c588;
+}
+
+.footer {
+  margin-top: 80px;
+  padding: 30px 0;
+  border-top: 1px solid #222;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
