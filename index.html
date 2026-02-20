@@ -1,18 +1,45 @@
 <!doctype html>
 <html lang="it">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AL DOGE Core v1</title>
-  </head>
-  <body>
-    <h1>Menu</h1>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AL DOGE – Core v1</title>
+
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+
+<header class="header">
+  <div class="container">
+    <h1 class="logo">AL DOGE</h1>
+    <div class="subtitle">Ordina Online</div>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="menu-controls">
     <label for="size-select">Formato:</label>
     <select id="size-select"></select>
-    <p>Maggiorazione formato: <span id="size-surcharge"></span></p>
-    <div id="menu"></div>
+    <p class="surcharge">
+      Maggiorazione formato:
+      <span id="size-surcharge">€ 0.00</span>
+    </p>
+  </section>
 
-    <script src="js/cart.js"></script>
-    <script src="js/menu-render.js"></script>
-  </body>
+  <section id="menu" class="menu-grid"></section>
+
+</main>
+
+<footer class="footer">
+  <div class="container">
+    © 2026 AL DOGE – Farla di Majano
+  </div>
+</footer>
+
+<script src="js/cart.js"></script>
+<script src="js/menu-render.js"></script>
+
+</body>
 </html>
