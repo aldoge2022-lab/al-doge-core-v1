@@ -43,7 +43,7 @@ function extractItems(text) {
   const lower = text.toLowerCase();
   const found = [];
 
-  for (const item in MENU) {
+  for (const item of Object.keys(MENU)) {
     if (lower.includes(item)) {
       const escapedItem = item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(`(\\d+)\\s*(x)?\\s*${escapedItem}`);
