@@ -30,7 +30,7 @@ Module._load = function (request, parent, isMain) {
   }
   return originalLoad.call(this, request, parent, isMain);
 };
-const { handler } = require('./ordine-ai');
+const { handler } = require('../netlify/functions/ordine-ai');
 Module._load = originalLoad;
 
 test.beforeEach(() => {
