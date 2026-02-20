@@ -28,12 +28,13 @@ exports.handler = async function (event) {
     const email = session.customer_details?.email || "Non fornita";
 
     if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
-      await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: process.env.TELEGRAM_CHAT_ID,
-          text: `
+      try {
+        const telegramResponse = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: process.env.TELEGRAM_CHAT_ID,
+            text: `
 ✅ ORDINE PAGATO – AL DOGE
 
 💰 Totale: €${orderValue}
@@ -42,8 +43,15 @@ exports.handler = async function (event) {
 
 🍕 Iniziare preparazione.
 `
-        })
-      });
+          })
+        });
+
+        if (!telegramResponse.ok) {
+          console.error("Errore invio Telegram:", telegramResponse.status);
+        }
+      } catch (err) {
+        console.error("Errore invio Telegram:", err.message);
+      }
     }
   }
 
