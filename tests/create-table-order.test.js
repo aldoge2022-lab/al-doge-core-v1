@@ -71,13 +71,27 @@ test('create-table-order validates empty items array', async () => {
     body: JSON.stringify({ table_id: 7, items: [] })
   });
   assert.equal(response.statusCode, 400);
-  assert.equal(JSON.parse(response.body).error, 'Items array cannot be empty');
+  assert.equal(JSON.parse(response.body).error, 'Items array empty');
 });
 
-test('create-table-order validates table_id type', async () => {
+test('create-table-order normalizes numeric table_id string', async () => {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ table_id: '7', items: [{ id: 'margherita', qty: 1 }] })
+  });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(upsertedTables[0], { id: 7, status: 'open', total_cents: 0 });
+  assert.equal(insertedOrders[0].table_id, 7);
+  assert.deepEqual(rpcCalls[0], {
+    fn: 'increment_table_total',
+    params: { table_id_input: 7, amount_input: 700 }
+  });
+});
+
+test('create-table-order validates table_id after normalization', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ table_id: 'abc', items: [{ id: 'margherita', qty: 1 }] })
   });
   assert.equal(response.statusCode, 400);
   assert.equal(JSON.parse(response.body).error, 'Invalid table_id: must be a number');
@@ -130,5 +144,5 @@ test('create-table-order rejects qty <= 0', async () => {
     })
   });
   assert.equal(response.statusCode, 400);
-  assert.equal(JSON.parse(response.body).error, 'Invalid qty for item: margherita');
+  assert.equal(JSON.parse(response.body).error, 'Invalid quantity for item margherita');
 });
