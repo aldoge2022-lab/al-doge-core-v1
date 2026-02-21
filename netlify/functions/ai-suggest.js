@@ -166,15 +166,7 @@ function buildConversionNote(preference, count, itemsCount) {
   return `${base} Se vuoi, posso preparare una variante più ricca.`;
 }
 
-function getBaseUrl(event) {
-  if (process.env.SITE_URL) {
-    try {
-      return new URL(process.env.SITE_URL).origin;
-    } catch (_) {
-      // fallback to request headers
-    }
-  }
-
+function getHeaderBaseUrl(event) {
   const headers = event.headers || {};
   const host = headers.host || headers.Host;
   if (!host) {
@@ -184,6 +176,31 @@ function getBaseUrl(event) {
   const protoHeader = headers['x-forwarded-proto'] || headers['X-Forwarded-Proto'];
   const proto = protoHeader ? String(protoHeader).split(',')[0].trim() : 'https';
   return `${proto}://${host}`;
+}
+
+function resolveCandidateBaseUrls(event) {
+  const urls = [];
+
+  if (process.env.SITE_URL) {
+    try {
+      urls.push(new URL(process.env.SITE_URL).origin);
+    } catch (_) {
+      // fallback to request header origin
+    }
+  }
+
+  try {
+    urls.push(getHeaderBaseUrl(event));
+  } catch (_) {
+    // if host header is missing we keep SITE_URL-only fallback
+  }
+
+  const unique = Array.from(new Set(urls.filter(Boolean)));
+  if (!unique.length) {
+    throw new Error('Missing host header');
+  }
+
+  return unique;
 }
 
 function validateMenuData(menuData) {
@@ -212,19 +229,29 @@ async function fetchMenuData(event) {
     return menuCache.data;
   }
 
-  const baseUrl = getBaseUrl(event);
-  const response = await fetch(`${baseUrl}/data/menu.json`);
-  if (!response.ok) {
-    throw new Error(`Menu fetch failed (${response.status})`);
+  const baseUrls = resolveCandidateBaseUrls(event);
+  let lastFailure = null;
+
+  for (const baseUrl of baseUrls) {
+    const response = await fetch(`${baseUrl}/data/menu.json`, {
+      headers: { Accept: 'application/json' }
+    });
+
+    if (!response.ok) {
+      lastFailure = new Error(`Menu fetch failed (${response.status})`);
+      continue;
+    }
+
+    const menuData = validateMenuData(await response.json());
+    menuCache = {
+      data: menuData,
+      expiresAt: now + MENU_CACHE_TTL_MS
+    };
+
+    return menuData;
   }
 
-  const menuData = validateMenuData(await response.json());
-  menuCache = {
-    data: menuData,
-    expiresAt: now + MENU_CACHE_TTL_MS
-  };
-
-  return menuData;
+  throw (lastFailure || new Error('Menu fetch failed (unknown)'));
 }
 
 exports.handler = async function (event) {
