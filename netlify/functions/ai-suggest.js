@@ -72,34 +72,42 @@ function chooseDrinkUpsell(message, people) {
   };
 }
 
-async function createCommercialNote(message, items, drinkUpsell) {
-  if (!process.env.OPENAI_API_KEY || typeof fetch !== 'function') return '';
-  try {
-    const itemText = items.map((item) => `${item.id} x${item.qty}`).join(', ');
-    const upsellText = drinkUpsell ? `${drinkUpsell.item.id} x${drinkUpsell.item.qty}` : 'nessuna bevanda';
-    const prompt = `Scrivi una nota commerciale breve in italiano (max 18 parole) per questa proposta pizzeria. Cliente: "${String(message)}". Proposta: ${itemText}. Upsell bevanda: ${upsellText}.`;
+async function generateCommercialNote(prompt) {
+  if (!process.env.XAI_API_KEY || typeof fetch !== 'function') {
+    return null;
+  }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  try {
+    const response = await fetch('https://api.x.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.XAI_API_KEY}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-5-2-mini',
-        messages: [{ role: 'user', content: prompt }]
+        model: 'grok-2-latest',
+        messages: [
+          {
+            role: 'system',
+            content: 'Sei il consulente vendite della pizzeria AL DOGE. Rispondi in massimo 4 righe, tono commerciale, breve e diretto.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
       })
     });
-    if (!response.ok) return '';
+    if (!response.ok) {
+      console.error('xAI HTTP error:', response.status);
+      return null;
+    }
 
-    const payload = await response.json();
-    const text = payload?.choices?.[0]?.message?.content
-      || payload?.output_text
-      || payload?.output?.[0]?.content?.[0]?.text
-      || '';
-    return String(text || '').trim().slice(0, 240);
-  } catch {
-    return '';
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || null;
+  } catch (error) {
+    console.error('xAI ERROR:', error);
+    return null;
   }
 }
 
@@ -116,14 +124,19 @@ exports.handler = async (event) => {
     if (!items.length) return invalidInput();
     const people = detectPeople(message);
     const secondarySuggestion = chooseDrinkUpsell(message, people);
-    const note = await createCommercialNote(message, items, secondarySuggestion);
+    const itemText = items.map((item) => `${item.id} x${item.qty}`).join(', ');
+    const upsellText = secondarySuggestion ? `${secondarySuggestion.item.id} x${secondarySuggestion.item.qty}` : 'nessuna bevanda';
+    const prompt = `Scrivi una nota commerciale breve in italiano (max 18 parole) per questa proposta pizzeria. Cliente: "${String(message)}". Proposta: ${itemText}. Upsell bevanda: ${upsellText}.`;
+    const aiNote = await generateCommercialNote(prompt);
+    const finalNote = aiNote
+      || 'Scelta equilibrata perfetta per il tavolo. Aggiungi una bibita e chiudi l\'ordine ora.';
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         items,
-        note,
+        note: finalNote,
         secondarySuggestion
       })
     };
