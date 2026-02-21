@@ -81,11 +81,14 @@ test('create-checkout calculates totals only from catalog', async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(checkoutCalls.length, 1);
   assert.equal(checkoutCalls[0].payment_method_types[0], 'card');
-  assert.equal(checkoutCalls[0].success_url, 'https://example.com/success.html');
-  assert.equal(checkoutCalls[0].cancel_url, 'https://example.com/cancel.html');
+  assert.equal(checkoutCalls[0].success_url, `${process.env.SITE_URL}/success.html`);
+  assert.equal(checkoutCalls[0].cancel_url, `${process.env.SITE_URL}/cancel.html`);
   assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 1050);
   assert.equal(checkoutCalls[0].line_items[0].quantity, 2);
   assert.equal(checkoutCalls[0].metadata.order_id, 'ord_1');
+  assert.equal(checkoutCalls[0].metadata.table_number, undefined);
+  assert.equal(insertedOrders[0][0].type, 'takeaway');
+  assert.equal(insertedOrders[0][0].table_number, null);
   assert.equal(insertedOrders[0][0].total_cents, 2100);
   assert.equal(insertedOrderItems[0][0].product_id, 'margherita');
 });
@@ -105,6 +108,23 @@ test('create-checkout adds cover charge for sala service', async () => {
   assert.equal(checkoutCalls[0].line_items[1].price_data.product_data.name, 'Coperto');
   assert.equal(checkoutCalls[0].line_items[1].quantity, 2);
   assert.equal(insertedOrders[0][0].total_cents, 900);
+});
+
+
+test('create-checkout sets table mode and metadata when table_number query param is present', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    queryStringParameters: { table_number: 'A12' },
+    body: JSON.stringify({
+      cart: [{ type: 'drink', id: 'birra-05', quantity: 1 }]
+    })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(insertedOrders[0][0].type, 'table');
+  assert.equal(insertedOrders[0][0].table_number, 'A12');
+  assert.equal(checkoutCalls[0].metadata.order_id, 'ord_1');
+  assert.equal(checkoutCalls[0].metadata.table_number, 'A12');
 });
 
 test('create-checkout blocks Stripe session when DB insert fails', async () => {
