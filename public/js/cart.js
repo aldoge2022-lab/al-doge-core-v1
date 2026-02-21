@@ -97,7 +97,13 @@
   }
 
   function commitCart(cart) {
-    write(cart);
+    const normalizedCart = normalizeCart(cart);
+    if (normalizedCart.length === 0) {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } else {
+      write(normalizedCart);
+    }
     renderCart();
     updateBadge();
     emitUpdated();
