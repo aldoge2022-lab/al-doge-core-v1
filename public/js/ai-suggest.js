@@ -53,8 +53,35 @@
 
     const names = new Map((menuData.menu || []).map((item) => [item.id, item.name]));
     const lines = data.items.map((it) => `- ${names.get(it.id) || it.id} × ${it.qty}`).join('\n');
-    resultEl.textContent = `Proposta:\n${lines}\n${data.note ? `\n${data.note}` : ''}`;
+    const secondaryLine = data.secondarySuggestion && data.secondarySuggestion.item
+      ? `\nSuggerimento extra (${data.secondarySuggestion.kind}): ${(names.get(data.secondarySuggestion.item.id) || data.secondarySuggestion.item.id)} × ${data.secondarySuggestion.item.qty} — ${data.secondarySuggestion.cta || 'Aggiungi'}`
+      : '';
+    resultEl.textContent = `Proposta:\n${lines}${secondaryLine}\n${data.note ? `\n${data.note}` : ''}`;
     addBtn.disabled = false;
+  }
+
+  function getPeopleCount(message) {
+    const lower = String(message || '').toLowerCase();
+    const match = lower.match(/(?:siamo|in|per)\s+(\d{1,2})/) || lower.match(/(\d{1,2})\s+persone?/);
+    const value = match ? Number(match[1]) : 1;
+    return Math.max(1, Math.min(5, Number.isFinite(value) ? value : 1));
+  }
+
+  function applyPostSuggestionConversionFlow(suggestion, message) {
+    if (!suggestion || !suggestion.secondarySuggestion || !suggestion.secondarySuggestion.item) return suggestion;
+    const secondary = suggestion.secondarySuggestion;
+    if (secondary.kind !== 'beverage' && secondary.kind !== 'premium') return suggestion;
+
+    if (secondary.kind === 'beverage') {
+      secondary.item.qty = Math.max(1, Math.min(5, Math.ceil(getPeopleCount(message) / 2)));
+      secondary.cta = secondary.cta || 'Completa con bevande';
+    } else {
+      secondary.item.qty = 1;
+      secondary.cta = secondary.cta || 'Sblocca upgrade premium';
+    }
+
+    suggestion.note = [suggestion.note, `Conferma rapida: ${secondary.cta}.`].filter(Boolean).join(' ').trim();
+    return suggestion;
   }
 
 
@@ -90,8 +117,9 @@
       }
 
       const validated = validateSuggestion(payload);
+      validated.secondarySuggestion = payload.secondarySuggestion || null;
       lastSuggestion = validated;
-      renderSuggestion(validated);
+      renderSuggestion(applyPostSuggestionConversionFlow(validated, message));
     } catch (error) {
       console.error(error);
       resultEl.textContent = 'Errore tecnico temporaneo.';
@@ -122,6 +150,22 @@
         });
       }
     });
+
+    const secondary = lastSuggestion.secondarySuggestion;
+    if (secondary && secondary.item && (secondary.kind === 'beverage' || secondary.kind === 'premium')) {
+      const product = productsById.get(secondary.item.id);
+      if (product) {
+        for (let i = 0; i < secondary.item.qty; i += 1) {
+          window.Cart.addItem({
+            id: product.id,
+            name: product.name,
+            size: size,
+            unit_price_cents: getUnitPrice(product)
+          });
+        }
+        resultEl.textContent = `${resultEl.textContent}\n✓ ${secondary.cta || 'Suggerimento extra applicato'}`;
+      }
+    }
 
     window.dispatchEvent(new Event('cart-updated'));
     if (typeof window.alDogeOpenDrawer === 'function') {
