@@ -74,6 +74,15 @@ test('create-table-order validates empty items array', async () => {
   assert.equal(JSON.parse(response.body).error, 'Items array cannot be empty');
 });
 
+test('create-table-order validates table_id type', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ table_id: '7', items: [{ id: 'margherita', qty: 1 }] })
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).error, 'Invalid table_id: must be a number');
+});
+
 test('create-table-order recalculates total from catalog and updates table total', async () => {
   const response = await handler({
     httpMethod: 'POST',

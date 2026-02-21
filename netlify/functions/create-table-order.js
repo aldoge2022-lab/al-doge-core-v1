@@ -30,7 +30,7 @@ exports.handler = async (event) => {
     let payload;
     try {
       payload = JSON.parse(event.body || '{}');
-    } catch (_) {
+    } catch {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Invalid JSON payload' })
@@ -39,10 +39,16 @@ exports.handler = async (event) => {
 
     const { table_id, items } = payload;
 
-    if (typeof table_id !== 'number' || !Number.isFinite(table_id)) {
+    if (typeof table_id === 'undefined' || table_id === null) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Missing table_id' })
+      };
+    }
+    if (typeof table_id !== 'number' || !Number.isFinite(table_id)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Invalid table_id: must be a number' })
       };
     }
     if (!Array.isArray(items)) {
