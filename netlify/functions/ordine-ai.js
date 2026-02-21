@@ -7,6 +7,9 @@ if (!process.env.STRIPE_SECRET_KEY) {
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 const MAX_INPUT_LENGTH = 500;
+const MAX_CHECKOUT_ITEMS = 30;
+const MAX_ITEM_QUANTITY = 20;
+const MAX_PRODUCT_NAME_LENGTH = 120;
 
 const MENU = {
   "margherita": 6,
@@ -67,14 +70,22 @@ async function sendTelegramNotification(message) {
     return;
   }
 
-  await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: process.env.TELEGRAM_CHAT_ID,
-      text: message
-    })
-  });
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: process.env.TELEGRAM_CHAT_ID,
+        text: message
+      })
+    });
+
+    if (!response.ok) {
+      console.error("Errore invio Telegram:", response.status);
+    }
+  } catch (error) {
+    console.error("Errore invio Telegram:", error.message);
+  }
 }
 
 exports.handler = async function (event) {
@@ -88,6 +99,52 @@ exports.handler = async function (event) {
 
   try {
     const body = JSON.parse(event.body || "{}");
+    const rawItems = Array.isArray(body.items) ? body.items : null;
+
+    if (rawItems && rawItems.length) {
+      if (rawItems.length > MAX_CHECKOUT_ITEMS) {
+        return { statusCode: 400, body: "Invalid input" };
+      }
+
+      const line_items = rawItems.map((item) => {
+        const quantity = Math.max(1, Math.min(MAX_ITEM_QUANTITY, Number(item?.quantity) || 1));
+        const unitAmountCents = Number(item?.unit_price_cents);
+        const name = String(item?.name || item?.id || "Prodotto").slice(0, MAX_PRODUCT_NAME_LENGTH);
+        return {
+          price_data: {
+            currency: "eur",
+            product_data: { name },
+            unit_amount: unitAmountCents
+          },
+          quantity
+        };
+      }).filter((item) => Number.isFinite(item.price_data.unit_amount) && item.price_data.unit_amount > 0);
+
+      if (!line_items.length) {
+        return { statusCode: 400, body: "Invalid input" };
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items,
+        mode: "payment",
+        success_url: `${process.env.SITE_URL}/success.html`,
+        cancel_url: `${process.env.SITE_URL}/cancel.html`
+      });
+
+      await sendTelegramNotification(`
+🛒 Nuovo checkout web
+💰 Righe ordine: ${line_items.length}
+🔗 Pagamento: ${session.url}
+🕒 ${new Date().toLocaleString("it-IT")}
+`);
+
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ url: session.url })
+      };
+    }
+
     const message = (body.message || "").trim();
 
     if (!message || message.length > MAX_INPUT_LENGTH) {
