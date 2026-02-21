@@ -47,6 +47,14 @@ body {
   letter-spacing: 2px;
 }
 
+.hero-subtitle-secondary {
+  margin-top: 10px;
+  font-size: 0.95rem;
+  opacity: 0.85;
+  letter-spacing: 0.5px;
+  color: var(--gold);
+}
+
 .menu-controls {
   margin-bottom: 40px;
 }
@@ -284,6 +292,18 @@ button:hover {
   text-align:right;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.cart-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.cart-item-action-btn {
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 .cart-drawer-footer{
