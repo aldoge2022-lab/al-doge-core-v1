@@ -3,6 +3,7 @@
   const suggestBtn = document.getElementById('aiSuggestBtn');
   const resultEl = document.getElementById('aiResult');
   const addBtn = document.getElementById('aiAddBtn');
+  const quickActionButtons = document.querySelectorAll('[data-ai-quick]');
 
   if (!promptEl || !suggestBtn || !resultEl || !addBtn) return;
 
@@ -55,6 +56,14 @@
     resultEl.textContent = `Proposta:\n${lines}\n${data.note ? `\n${data.note}` : ''}`;
     addBtn.disabled = false;
   }
+
+
+  quickActionButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      promptEl.value = button.getAttribute('data-ai-quick') || '';
+      suggestBtn.click();
+    });
+  });
 
   suggestBtn.addEventListener('click', async function () {
     const message = promptEl.value.trim();
