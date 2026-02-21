@@ -73,6 +73,13 @@ select {
   color: var(--text-muted);
 }
 
+#drinkSuggestionBox {
+  background: var(--bg-card);
+  border: 1px solid #2a2f38;
+  border-radius: 12px;
+  padding: 16px;
+}
+
 .menu-grid {
   display: grid;
   gap: 20px;

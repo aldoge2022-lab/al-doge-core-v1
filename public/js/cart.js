@@ -1,20 +1,48 @@
 (function () {
   const STORAGE_KEY = 'cart';
   const LEGACY_STORAGE_KEY = 'al_doge_cart_v1';
+  const FALLBACK_CATALOG = { menu: [], drinks: [], doughs: { normale: { surcharge_cents: 0 } }, extras: {} };
+  const catalog = window.ALDOGE_CATALOG || FALLBACK_CATALOG;
+
+  function lineUnitPrice(item) {
+    if (!item || !item.id) return 0;
+    if (item.type === 'drink') {
+      const drink = (catalog.drinks || []).find((entry) => entry.id === item.id && entry.active);
+      return drink ? Number(drink.price_cents) : 0;
+    }
+    const pizza = (catalog.menu || []).find((entry) => entry.id === item.id && entry.active);
+    if (!pizza) return 0;
+    const dough = catalog.doughs[item.dough] || catalog.doughs.normale || { surcharge_cents: 0 };
+    const extrasTotal = (item.extras || []).reduce((sum, extraId) => {
+      const extra = catalog.extras[extraId];
+      return sum + (extra ? Number(extra.price_cents) : 0);
+    }, 0);
+    return Number(pizza.base_price_cents) + Number(dough.surcharge_cents || 0) + extrasTotal;
+  }
+
+  function cartItemKey(item) {
+    const extras = Array.isArray(item.extras) ? [...item.extras].sort().join(',') : '';
+    return [item.type, item.id, item.dough || '', extras].join('|');
+  }
 
   function toSafeQuantity(value) {
     return Math.max(1, Number(value) || 1);
   }
 
   function normalizeItem(item) {
-    const cents =
-      item && item.price_cents != null
-        ? Number(item.price_cents)
-        : Number(item && item.unit_price_cents);
+    const type = item && item.type === 'drink' ? 'drink' : 'pizza';
+    const id = String(item && item.id ? item.id : '');
+    const dough = type === 'pizza'
+      ? String((item && item.dough) || (item && item.size) || (catalog.size_engine && catalog.size_engine.default) || 'normale')
+      : undefined;
+    const extras = type === 'pizza' && Array.isArray(item && item.extras)
+      ? [...new Set(item.extras.map((extra) => String(extra)).filter((extra) => catalog.extras[extra]))]
+      : [];
     return {
-      id: String(item && item.id ? item.id : ''),
-      name: String((item && item.name) || 'Prodotto'),
-      price_cents: Number.isFinite(cents) ? cents : 0,
+      type,
+      id,
+      dough,
+      extras,
       quantity: toSafeQuantity(item && (item.quantity ?? item.qty))
     };
   }
@@ -23,8 +51,9 @@
     const normalized = [];
     (Array.isArray(items) ? items : []).forEach((entry) => {
       const item = normalizeItem(entry);
-      if (!item.id || item.price_cents <= 0) return;
-      const existing = normalized.find((cartItem) => cartItem.id === item.id);
+      if (!item.id || lineUnitPrice(item) <= 0) return;
+      const itemKey = cartItemKey(item);
+      const existing = normalized.find((cartItem) => cartItemKey(cartItem) === itemKey);
       if (existing) {
         existing.quantity += item.quantity;
       } else {
@@ -66,11 +95,12 @@
     addToCart(item) {
       const cart = read();
       const normalizedItem = normalizeItem(item);
-      if (!normalizedItem.id || normalizedItem.price_cents <= 0) return cart;
-      const existing = cart.find((entry) => entry.id === normalizedItem.id);
+      if (!normalizedItem.id || lineUnitPrice(normalizedItem) <= 0) return cart;
+      const itemKey = cartItemKey(normalizedItem);
+      const existing = cart.find((entry) => cartItemKey(entry) === itemKey);
 
       if (existing) {
-        existing.quantity += 1;
+        existing.quantity += normalizedItem.quantity;
       } else {
         cart.push(normalizedItem);
       }
@@ -84,7 +114,9 @@
     },
     decreaseQuantity(productId) {
       const cart = read();
-      const index = cart.findIndex((entry) => entry.id === productId);
+      const index = typeof productId === 'object'
+        ? cart.findIndex((entry) => cartItemKey(entry) === cartItemKey(normalizeItem(productId)))
+        : cart.findIndex((entry) => entry.id === productId);
       if (index === -1) return cart;
       if (cart[index].quantity > 1) {
         cart[index].quantity -= 1;
@@ -96,19 +128,31 @@
       return cart;
     },
     removeFromCart(productId) {
-      const cart = read().filter((entry) => entry.id !== productId);
+      const cart = typeof productId === 'object'
+        ? read().filter((entry) => cartItemKey(entry) !== cartItemKey(normalizeItem(productId)))
+        : read().filter((entry) => entry.id !== productId);
       write(cart);
       emitUpdated();
       return cart;
     },
-    calculateTotal() {
+    removeItem(productId) {
+      return this.removeFromCart(productId);
+    },
+    updateBadge() {
       const cart = read();
-      const total = cart.reduce((sum, item) => sum + (item.price_cents * item.quantity), 0);
       const badge = document.getElementById('cartBadge');
-      const barTotal = document.getElementById('cartBarTotal');
       if (badge) badge.textContent = String(cart.reduce((sum, item) => sum + item.quantity, 0));
+    },
+    calculatePreviewTotal() {
+      const cart = read();
+      const total = cart.reduce((sum, item) => sum + (lineUnitPrice(item) * item.quantity), 0);
+      this.updateBadge();
+      const barTotal = document.getElementById('cartBarTotal');
       if (barTotal) barTotal.textContent = `€ ${(total / 100).toFixed(2)}`;
       return total;
+    },
+    calculateTotal() {
+      return this.calculatePreviewTotal();
     },
     clearCart() {
       localStorage.removeItem(STORAGE_KEY);
@@ -122,7 +166,10 @@
   window.addToCart = (product) => Cart.addToCart(product);
   window.decreaseQuantity = (productId) => Cart.decreaseQuantity(productId);
   window.removeFromCart = (productId) => Cart.removeFromCart(productId);
-  window.calculateTotal = () => Cart.calculateTotal();
+  window.removeItem = (productId) => Cart.removeItem(productId);
+  window.updateBadge = () => Cart.updateBadge();
+  window.calculatePreviewTotal = () => Cart.calculatePreviewTotal();
+  window.calculateTotal = () => Cart.calculatePreviewTotal();
   window.clearCart = () => Cart.clearCart();
 })();
 
@@ -161,14 +208,10 @@ function alDogeCalcCount(cart) {
 }
 
 function alDogeCalcTotal(cart) {
-  return cart.reduce((sum, item) => {
-    const q = Number(item.quantity ?? item.qty ?? 1);
-    const priceCents =
-      item.price_cents != null
-        ? Number(item.price_cents)
-        : (item.unit_price_cents != null ? Number(item.unit_price_cents) : Math.round(Number(item.price || 0) * 100));
-    return sum + (priceCents * q);
-  }, 0);
+  if (window.Cart && typeof window.Cart.calculatePreviewTotal === 'function') {
+    return window.Cart.calculatePreviewTotal();
+  }
+  return 0;
 }
 
 function alDogeFormatEUR(v) {
@@ -179,17 +222,18 @@ function alDogeFormatEUR(v) {
 async function alDogeProceedToCheckout(cart) {
   const checkoutItems = Array.isArray(cart)
     ? cart.map((item) => ({
+      type: item.type === 'drink' ? 'drink' : 'pizza',
       id: item.id,
       quantity: Number(item.quantity ?? item.qty ?? 1),
-      unit_price_cents: Number(item.price_cents ?? item.unit_price_cents ?? 0),
-      name: item.name
+      dough: item.type === 'drink' ? undefined : String(item.dough || 'normale'),
+      extras: item.type === 'drink' ? [] : (Array.isArray(item.extras) ? item.extras : [])
     }))
     : [];
 
-  const response = await fetch('/.netlify/functions/ordine-ai', {
+  const response = await fetch('/.netlify/functions/create-checkout', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items: checkoutItems })
+    body: JSON.stringify({ cart: checkoutItems })
   });
 
   const payload = await response.json();
@@ -241,17 +285,25 @@ function alDogeRenderCartDrawer() {
   emptyEl.style.display = 'none';
 
   cart.forEach((it) => {
-    const name = it.name ?? it.title ?? 'Prodotto';
+    const drink = (catalog.drinks || []).find((entry) => entry.id === it.id);
+    const pizza = (catalog.menu || []).find((entry) => entry.id === it.id);
+    const name = drink ? drink.name : (pizza ? pizza.name : 'Prodotto');
     const q = Number(it.quantity ?? it.qty ?? 1);
-    const priceCents =
-      it.price_cents != null
-        ? Number(it.price_cents)
-        : (it.unit_price_cents != null ? Number(it.unit_price_cents) : Math.round(Number(it.price || 0) * 100));
+    const dough = catalog.doughs && it.dough ? catalog.doughs[it.dough] : null;
+    const extraIds = Array.isArray(it.extras) ? it.extras : [];
+    const extras = extraIds.map((extraId) => catalog.extras && catalog.extras[extraId] ? catalog.extras[extraId].label : null).filter(Boolean);
+    const baseCents = drink
+      ? Number(drink.price_cents)
+      : (pizza ? Number(pizza.base_price_cents) + Number((dough && dough.surcharge_cents) || 0) + extraIds.reduce((sum, extraId) => {
+        const extraEntry = catalog.extras && catalog.extras[extraId];
+        return sum + (extraEntry ? Number(extraEntry.price_cents) : 0);
+      }, 0) : 0);
+    const priceCents = baseCents;
     const line = priceCents * q;
 
     const metaParts = [];
-    if (it.size) metaParts.push(String(it.size));
-    if (it.format) metaParts.push(String(it.format));
+    if (it.dough) metaParts.push(String((dough && dough.label) || it.dough));
+    if (extras.length) metaParts.push(extras.join(', '));
     const meta = metaParts.length ? metaParts.join(' • ') : '';
 
     const row = document.createElement('div');

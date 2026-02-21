@@ -3,11 +3,15 @@
   const suggestBtn = document.getElementById('aiSuggestBtn');
   const resultEl = document.getElementById('aiResult');
   const addBtn = document.getElementById('aiAddBtn');
+  const drinkSuggestionBox = document.getElementById('drinkSuggestionBox');
+  const drinkSuggestionTitle = document.getElementById('drinkSuggestionTitle');
+  const drinkSuggestionReason = document.getElementById('drinkSuggestionReason');
+  const drinkSuggestionAddBtn = document.getElementById('drinkSuggestionAddBtn');
   const quickActionButtons = document.querySelectorAll('[data-ai-quick]');
 
   if (!promptEl || !suggestBtn || !resultEl || !addBtn) return;
 
-  let menuData = null;
+  let menuData = window.ALDOGE_CATALOG || null;
   let lastSuggestion = null;
 
   function currentSize() {
@@ -92,6 +96,40 @@
     });
   });
 
+  async function updateDrinkSuggestionBox() {
+    if (!drinkSuggestionBox || !drinkSuggestionTitle || !drinkSuggestionReason || !drinkSuggestionAddBtn || !window.Cart) return;
+    try {
+      const response = await fetch('/.netlify/functions/openai-suggestion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cart: window.Cart.getCart() })
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.suggested_drink) {
+        drinkSuggestionBox.hidden = true;
+        return;
+      }
+
+      const catalog = window.ALDOGE_CATALOG || { drinks: [] };
+      const drink = (catalog.drinks || []).find((entry) => entry.name === payload.suggested_drink);
+      if (!drink) {
+        drinkSuggestionBox.hidden = true;
+        return;
+      }
+
+      drinkSuggestionTitle.textContent = `🥤 Abbinalo così: ${payload.suggested_drink}`;
+      drinkSuggestionReason.textContent = payload.reason || '';
+      drinkSuggestionAddBtn.onclick = function () {
+        window.Cart.addItem({ type: 'drink', id: drink.id, quantity: 1 });
+      };
+      drinkSuggestionBox.hidden = false;
+    } catch (error) {
+      drinkSuggestionBox.hidden = true;
+    }
+  }
+
+  window.addEventListener('product-added', updateDrinkSuggestionBox);
+
   suggestBtn.addEventListener('click', async function () {
     const message = promptEl.value.trim();
     addBtn.disabled = true;
@@ -173,12 +211,4 @@
     }
   });
 
-  fetch('/data/menu.json')
-    .then((response) => response.json())
-    .then((data) => {
-      menuData = data;
-    })
-    .catch((error) => {
-      console.error(error);
-    });
 })();
