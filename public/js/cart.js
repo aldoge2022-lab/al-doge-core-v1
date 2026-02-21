@@ -38,9 +38,199 @@
       }
 
       write(cart);
+      window.dispatchEvent(new Event('cart-updated'));
       return cart;
     }
   };
 
   window.Cart = Cart;
 })();
+
+// =========================
+// PREMIUM CART DRAWER UI
+// =========================
+
+function alDogeGetCartSafe() {
+  try {
+    if (window.Cart && typeof window.Cart.getCart === 'function') {
+      const cartState = window.Cart.getCart();
+      if (cartState && Array.isArray(cartState.items)) return cartState.items;
+    }
+  } catch (_) {}
+  try {
+    const raw = localStorage.getItem('cart');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (_) {}
+  try {
+    const raw = localStorage.getItem('al_doge_cart_v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.items)) return parsed.items;
+    }
+  } catch (_) {}
+  if (Array.isArray(window.cart)) return window.cart;
+  return [];
+}
+
+function alDogeCalcCount(cart) {
+  return cart.reduce((s, it) => s + Number(it.quantity ?? it.qty ?? 1), 0);
+}
+
+function alDogeCalcTotal(cart) {
+  return cart.reduce((s, it) => {
+    const q = Number(it.quantity ?? it.qty ?? 1);
+    const price =
+      it.price != null
+        ? Number(it.price)
+        : (it.price_cents != null
+          ? Number(it.price_cents) / 100
+          : (it.unit_price_cents != null ? Number(it.unit_price_cents) / 100 : 0));
+    return s + (price * q);
+  }, 0);
+}
+
+function alDogeFormatEUR(v) {
+  return `€ ${Number(v).toFixed(2)}`;
+}
+
+function alDogeProceedToCheckoutSafe(cart) {
+  if (typeof window.proceedToCheckout === 'function') return window.proceedToCheckout(cart);
+  if (typeof window.createCheckoutSession === 'function') return window.createCheckoutSession(cart);
+  if (typeof window.checkout === 'function') return window.checkout(cart);
+  alert('Checkout non collegato: manca proceedToCheckout/createCheckoutSession/checkout.');
+}
+
+function alDogeRenderCartDrawer() {
+  const cart = alDogeGetCartSafe();
+  const count = alDogeCalcCount(cart);
+  const total = alDogeCalcTotal(cart);
+
+  const badge = document.getElementById('cartBadge');
+  const barTotal = document.getElementById('cartBarTotal');
+  const topCheckout = document.getElementById('cartCheckoutBtnTop');
+
+  if (badge) badge.textContent = String(count);
+  if (barTotal) barTotal.textContent = alDogeFormatEUR(total);
+  if (topCheckout) topCheckout.disabled = (count === 0);
+
+  const emptyEl = document.getElementById('cartDrawerEmpty');
+  const itemsEl = document.getElementById('cartDrawerItems');
+  const totalEl = document.getElementById('cartDrawerTotal');
+  const checkoutBtn = document.getElementById('cartCheckoutBtn');
+
+  if (totalEl) totalEl.textContent = alDogeFormatEUR(total);
+  if (checkoutBtn) checkoutBtn.disabled = (count === 0);
+
+  if (!emptyEl || !itemsEl) return;
+
+  itemsEl.innerHTML = '';
+  if (count === 0) {
+    emptyEl.style.display = '';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+
+  cart.forEach((it) => {
+    const name = it.name ?? it.title ?? 'Prodotto';
+    const q = Number(it.quantity ?? it.qty ?? 1);
+    const price =
+      it.price != null
+        ? Number(it.price)
+        : (it.price_cents != null
+          ? Number(it.price_cents) / 100
+          : (it.unit_price_cents != null ? Number(it.unit_price_cents) / 100 : 0));
+    const line = price * q;
+
+    const metaParts = [];
+    if (it.size) metaParts.push(String(it.size));
+    if (it.format) metaParts.push(String(it.format));
+    const meta = metaParts.length ? metaParts.join(' • ') : '';
+
+    const row = document.createElement('div');
+    row.className = 'cart-item-row';
+
+    const left = document.createElement('div');
+    const itemName = document.createElement('div');
+    itemName.className = 'cart-item-name';
+    itemName.textContent = `${name} × ${q}`;
+    left.appendChild(itemName);
+
+    if (meta) {
+      const itemMeta = document.createElement('div');
+      itemMeta.className = 'cart-item-meta';
+      itemMeta.textContent = meta;
+      left.appendChild(itemMeta);
+    }
+
+    const right = document.createElement('div');
+    right.className = 'cart-item-right';
+    right.textContent = alDogeFormatEUR(line);
+
+    row.appendChild(left);
+    row.appendChild(right);
+    itemsEl.appendChild(row);
+  });
+}
+
+function alDogeOpenDrawer() {
+  const drawer = document.getElementById('cartDrawer');
+  const backdrop = document.getElementById('cartDrawerBackdrop');
+  const openBtn = document.getElementById('cartOpenBtn');
+  if (!drawer || !backdrop) return;
+
+  drawer.classList.add('open');
+  drawer.setAttribute('aria-hidden', 'false');
+  backdrop.hidden = false;
+
+  if (openBtn) openBtn.setAttribute('aria-expanded', 'true');
+}
+
+function alDogeCloseDrawer() {
+  const drawer = document.getElementById('cartDrawer');
+  const backdrop = document.getElementById('cartDrawerBackdrop');
+  const openBtn = document.getElementById('cartOpenBtn');
+  if (!drawer || !backdrop) return;
+
+  drawer.classList.remove('open');
+  drawer.setAttribute('aria-hidden', 'true');
+  backdrop.hidden = true;
+
+  if (openBtn) openBtn.setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  alDogeRenderCartDrawer();
+
+  const openBtn = document.getElementById('cartOpenBtn');
+  const closeBtn = document.getElementById('cartCloseBtn');
+  const backdrop = document.getElementById('cartDrawerBackdrop');
+
+  if (openBtn) openBtn.addEventListener('click', alDogeOpenDrawer);
+  if (closeBtn) closeBtn.addEventListener('click', alDogeCloseDrawer);
+  if (backdrop) backdrop.addEventListener('click', alDogeCloseDrawer);
+
+  document.addEventListener('keydown', (e) => {
+    const drawer = document.getElementById('cartDrawer');
+    if (e.key === 'Escape' && drawer && drawer.classList.contains('open')) alDogeCloseDrawer();
+  });
+
+  const btn1 = document.getElementById('cartCheckoutBtn');
+  const btn2 = document.getElementById('cartCheckoutBtnTop');
+
+  function goCheckout() {
+    const cart = alDogeGetCartSafe();
+    if (!cart.length) return;
+    alDogeProceedToCheckoutSafe(cart);
+  }
+
+  if (btn1) btn1.addEventListener('click', goCheckout);
+  if (btn2) btn2.addEventListener('click', goCheckout);
+
+  window.addEventListener('cart-updated', () => {
+    alDogeRenderCartDrawer();
+  });
+});
