@@ -4,9 +4,10 @@ const Module = require('node:module');
 
 process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_dummy';
 
-let mockOrder = { total_cents: 6000, paid_cents: 0 };
+let selectedOrder = null;
+let tableOrders = [];
 let orderUpdates = [];
-let paymentInserts = [];
+let tableUpdates = [];
 
 const stripeMock = () => ({
   webhooks: {
@@ -16,10 +17,19 @@ const stripeMock = () => ({
 
 const supabaseMock = {
   from: (table) => {
-    if (table === 'orders') {
+    if (table === 'table_orders') {
       const selectBuilder = {
-        eq: () => selectBuilder,
-        single: async () => ({ data: mockOrder, error: null })
+        eq: (column, value) => {
+          if (column === 'id') {
+            return {
+              single: async () => ({ data: selectedOrder, error: selectedOrder ? null : { code: 'PGRST116' } })
+            };
+          }
+          if (column === 'table_id') {
+            return Promise.resolve({ data: tableOrders, error: null });
+          }
+          return selectBuilder;
+        }
       };
       const updateBuilder = {
         eq: () => updateBuilder,
@@ -37,11 +47,19 @@ const supabaseMock = {
         }
       };
     }
-    if (table === 'payments') {
+    if (table === 'restaurant_tables') {
+      const updateBuilder = {
+        eq: () => updateBuilder,
+        then: (resolve) => {
+          tableUpdates.push(updateBuilder.payload);
+          resolve({ error: null });
+        },
+        payload: null
+      };
       return {
-        insert: async (rows) => {
-          paymentInserts.push(rows);
-          return { error: null };
+        update: (payload) => {
+          updateBuilder.payload = payload;
+          return updateBuilder;
         }
       };
     }
@@ -59,90 +77,81 @@ const { handler } = require('../netlify/functions/stripe-webhook');
 Module._load = originalLoad;
 
 test.beforeEach(() => {
-  mockOrder = { total_cents: 6000, paid_cents: 0 };
+  selectedOrder = { id: 'to_1', table_id: '7', paid: false };
+  tableOrders = [
+    { total_cents: 1000, paid: true },
+    { total_cents: 1500, paid: false }
+  ];
   orderUpdates = [];
-  paymentInserts = [];
+  tableUpdates = [];
 });
 
-test('stripe-webhook updates split payments as partial', async () => {
+test('stripe-webhook marks table order as paid and recalculates table total', async () => {
   const response = await handler({
     headers: { 'stripe-signature': 'sig' },
     body: JSON.stringify({
       type: 'checkout.session.completed',
       data: {
         object: {
-          id: 'cs_split_1',
-          amount_total: 1500,
-          metadata: { order_id: 'ord_1', table_number: '5', payment_mode: 'split' }
+          id: 'cs_1',
+          metadata: { order_id: 'to_1', table_id: '7' }
         }
       }
     })
   });
 
   assert.equal(response.statusCode, 200);
-  assert.equal(orderUpdates[0].paid_cents, 1500);
-  assert.equal(orderUpdates[0].status, 'partial');
-  assert.equal(paymentInserts.length, 0);
+  assert.deepEqual(orderUpdates[0], { paid: true, status: 'paid' });
+  assert.deepEqual(tableUpdates[0], { total_cents: 1500, status: 'open' });
 });
 
-test('stripe-webhook updates split payments as paid at completion', async () => {
-  mockOrder = { total_cents: 6000, paid_cents: 4500 };
+test('stripe-webhook closes table when no unpaid orders remain', async () => {
+  tableOrders = [{ total_cents: 1000, paid: true }];
   const response = await handler({
     headers: { 'stripe-signature': 'sig' },
     body: JSON.stringify({
       type: 'checkout.session.completed',
       data: {
         object: {
-          id: 'cs_split_2',
-          amount_total: 1500,
-          metadata: { order_id: 'ord_1', payment_mode: 'split' }
+          id: 'cs_2',
+          metadata: { order_id: 'to_1', table_id: '7' }
         }
       }
     })
   });
 
   assert.equal(response.statusCode, 200);
-  assert.equal(orderUpdates[0].paid_cents, 6000);
-  assert.equal(orderUpdates[0].status, 'paid');
+  assert.deepEqual(tableUpdates[0], { total_cents: 0, status: 'closed' });
 });
 
-test('stripe-webhook keeps full payment flow for non-split', async () => {
+test('stripe-webhook is idempotent when order is already paid', async () => {
+  selectedOrder = { id: 'to_1', table_id: '7', paid: true };
   const response = await handler({
     headers: { 'stripe-signature': 'sig' },
     body: JSON.stringify({
       type: 'checkout.session.completed',
       data: {
         object: {
-          id: 'cs_full_1',
-          amount_total: 2100,
-          metadata: { order_id: 'ord_2' }
+          id: 'cs_3',
+          metadata: { order_id: 'to_1', table_id: '7' }
         }
       }
     })
   });
 
   assert.equal(response.statusCode, 200);
-  assert.equal(orderUpdates[0].status, 'paid');
-  assert.equal(orderUpdates[0].paid_cents, 2100);
-  assert.equal(paymentInserts[0][0].payment_mode, 'full');
+  assert.equal(orderUpdates.length, 0);
+  assert.equal(tableUpdates.length, 0);
 });
 
-test('stripe-webhook accepts table metadata fallback', async () => {
+test('stripe-webhook ignores non checkout completed events', async () => {
   const response = await handler({
     headers: { 'stripe-signature': 'sig' },
     body: JSON.stringify({
-      type: 'checkout.session.completed',
-      data: {
-        object: {
-          id: 'cs_split_3',
-          amount_total: 1500,
-          metadata: { order_id: 'ord_1', table: '7', payment_mode: 'split' }
-        }
-      }
+      type: 'payment_intent.succeeded',
+      data: { object: {} }
     })
   });
-
   assert.equal(response.statusCode, 200);
-  assert.equal(orderUpdates[0].paid_cents, 1500);
-  assert.equal(orderUpdates[0].status, 'partial');
+  assert.equal(orderUpdates.length, 0);
 });

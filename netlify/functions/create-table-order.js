@@ -1,4 +1,20 @@
 const supabase = require('./_supabase');
+const catalog = require('../../data/catalog');
+
+function buildCatalogPrices() {
+  const prices = new Map();
+  for (const pizza of (catalog.menu || [])) {
+    if (pizza && pizza.active && pizza.id && Number.isInteger(pizza.base_price_cents) && pizza.base_price_cents > 0) {
+      prices.set(pizza.id, pizza.base_price_cents);
+    }
+  }
+  for (const drink of (catalog.drinks || [])) {
+    if (drink && drink.active && drink.id && Number.isInteger(drink.price_cents) && drink.price_cents > 0) {
+      prices.set(drink.id, drink.price_cents);
+    }
+  }
+  return prices;
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -9,40 +25,58 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { table_id, items, total_cents, payment_mode } = JSON.parse(event.body || '{}');
+    const { table_id, items } = JSON.parse(event.body || '{}');
 
-    if (!table_id || !Array.isArray(items) || !items.length || !total_cents || !payment_mode) {
+    if (!table_id || !Array.isArray(items) || !items.length) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Missing required fields' })
       };
     }
 
-    const { data: existingTable, error: tableError } = await supabase
-      .from('restaurant_tables')
-      .select('id')
-      .eq('id', table_id)
-      .single();
-
-    if (tableError && tableError.code !== 'PGRST116') throw tableError;
-
-    if (!existingTable) {
-      const { error: insertTableError } = await supabase.from('restaurant_tables').insert({
-        id: table_id,
-        status: 'open',
-        total_cents: 0
-      });
-      if (insertTableError) throw insertTableError;
+    const catalogPrices = buildCatalogPrices();
+    let total_cents = 0;
+    for (const item of items) {
+      if (!item || typeof item !== 'object' || !item.id) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: 'Invalid item' })
+        };
+      }
+      const qty = Number(item.qty);
+      if (!Number.isInteger(qty) || qty < 1) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: 'Invalid qty' })
+        };
+      }
+      const unitPrice = catalogPrices.get(item.id);
+      if (!Number.isInteger(unitPrice)) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: 'Invalid item' })
+        };
+      }
+      total_cents += (unitPrice * qty);
     }
+
+    const { error: upsertTableError } = await supabase.from('restaurant_tables').upsert({
+      id: table_id,
+      status: 'open',
+      total_cents: 0
+    }, {
+      onConflict: 'id',
+      ignoreDuplicates: true
+    });
+    if (upsertTableError) throw upsertTableError;
 
     const { data: order, error: orderError } = await supabase
       .from('table_orders')
       .insert({
         table_id,
-        items,
         total_cents,
-        payment_mode,
-        paid: false
+        paid: false,
+        status: 'pending'
       })
       .select()
       .single();

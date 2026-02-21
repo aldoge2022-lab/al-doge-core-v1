@@ -2,8 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 
-let existingTable = null;
-let insertedTables = [];
+let upsertedTables = [];
 let insertedOrders = [];
 let rpcCalls = [];
 
@@ -11,16 +10,9 @@ const supabaseMock = {
   from: (table) => {
     if (table === 'restaurant_tables') {
       return {
-        select: () => ({
-          eq: () => ({
-            single: async () => existingTable
-              ? { data: existingTable, error: null }
-              : { data: null, error: { code: 'PGRST116', message: 'Not found' } }
-          })
-        }),
-        insert: async (row) => {
-          insertedTables.push(row);
-          return { data: row, error: null };
+        upsert: async (row) => {
+          upsertedTables.push(row);
+          return { error: null };
         }
       };
     }
@@ -30,7 +22,7 @@ const supabaseMock = {
           select: () => ({
             single: async () => {
               insertedOrders.push(row);
-              return { data: { id: 123 }, error: null };
+              return { data: { id: 'to_1' }, error: null };
             }
           })
         })
@@ -53,8 +45,7 @@ const { handler } = require('../netlify/functions/create-table-order');
 Module._load = originalLoad;
 
 test.beforeEach(() => {
-  existingTable = null;
-  insertedTables = [];
+  upsertedTables = [];
   insertedOrders = [];
   rpcCalls = [];
 });
@@ -74,24 +65,52 @@ test('create-table-order validates required fields', async () => {
   assert.equal(JSON.parse(response.body).error, 'Missing required fields');
 });
 
-test('create-table-order inserts order and updates table total', async () => {
+test('create-table-order recalculates total from catalog and updates table total', async () => {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({
       table_id: 7,
-      items: [{ id: 'pizza', qty: 1 }],
-      total_cents: 2450,
-      payment_mode: 'stripe'
+      items: [
+        { id: 'margherita', qty: 2 },
+        { id: 'birra-05', qty: 1 }
+      ],
+      total_cents: 1
     })
   });
 
   assert.equal(response.statusCode, 200);
-  assert.equal(JSON.parse(response.body).order_id, 123);
-  assert.deepEqual(insertedTables[0], { id: 7, status: 'open', total_cents: 0 });
+  assert.equal(JSON.parse(response.body).order_id, 'to_1');
+  assert.deepEqual(upsertedTables[0], { id: 7, status: 'open', total_cents: 0 });
   assert.equal(insertedOrders[0].table_id, 7);
   assert.equal(insertedOrders[0].paid, false);
+  assert.equal(insertedOrders[0].status, 'pending');
+  assert.equal(insertedOrders[0].total_cents, 1900);
   assert.deepEqual(rpcCalls[0], {
     fn: 'increment_table_total',
-    params: { table_id_input: 7, amount_input: 2450 }
+    params: { table_id_input: 7, amount_input: 1900 }
   });
+});
+
+test('create-table-order rejects unknown catalog item', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      table_id: 7,
+      items: [{ id: 'not-exists', qty: 1 }]
+    })
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).error, 'Invalid item');
+});
+
+test('create-table-order rejects qty <= 0', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      table_id: 7,
+      items: [{ id: 'margherita', qty: 0 }]
+    })
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).error, 'Invalid qty');
 });
