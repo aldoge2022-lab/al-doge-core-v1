@@ -61,6 +61,16 @@
     </p>
   </section>
 
+  <section class="menu-controls" aria-label="Ordine AI">
+    <h2>Ordine AI</h2>
+    <textarea id="aiPrompt" rows="3" placeholder="Es: Siamo in 2, proposta leggera"></textarea>
+    <div>
+      <button id="aiSuggestBtn" type="button">Genera proposta</button>
+      <button id="aiAddBtn" type="button" disabled>Aggiungi al carrello</button>
+    </div>
+    <div id="aiResult" aria-live="polite"></div>
+  </section>
+
   <section id="menu" class="menu-grid"></section>
 
 </main>
@@ -73,6 +83,7 @@
 
 <script src="/js/cart.js"></script>
 <script src="/js/menu-render.js"></script>
+<script src="/js/ai-suggest.js"></script>
 
 </body>
 </html>
