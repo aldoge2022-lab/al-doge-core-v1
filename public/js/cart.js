@@ -2,11 +2,12 @@
   (function initTableMode() {
     const params = new URLSearchParams(window.location.search);
     const table = String(params.get('table') || '').trim();
+    const storedTable = String(localStorage.getItem('table_id') || sessionStorage.getItem('active_table') || '').trim();
     if (table && /^[A-Za-z0-9_-]{1,20}$/.test(table)) {
       localStorage.setItem('table_id', table);
       sessionStorage.setItem('active_table', table);
       document.body.classList.add('table-mode');
-    } else if (localStorage.getItem('table_id') || sessionStorage.getItem('active_table')) {
+    } else if (/^[A-Za-z0-9_-]{1,20}$/.test(storedTable)) {
       document.body.classList.add('table-mode');
     }
   })();

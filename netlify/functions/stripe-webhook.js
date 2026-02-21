@@ -109,7 +109,7 @@ exports.handler = async function (event) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             chat_id: process.env.TELEGRAM_CHAT_ID,
-             text: `
+            text: `
 ✅ ORDINE PAGATO – AL DOGE
 
 🍽️ ${table_number ? `TAVOLO ${table_number}` : "ASPORTO"}
