@@ -38,6 +38,18 @@ do $$
 begin
   if not exists (
     select 1 from pg_constraint
+    where conrelid = 'public.table_orders'::regclass
+      and contype = 'p'
+  ) then
+    alter table public.table_orders
+      add constraint table_orders_pkey primary key (id);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
     where conname = 'table_orders_table_id_fkey'
   ) then
     alter table public.table_orders
@@ -77,6 +89,10 @@ returns void
 language plpgsql
 as $$
 begin
+  if amount_input < 0 then
+    raise exception 'amount_input must be >= 0';
+  end if;
+
   update public.restaurant_tables
   set total_cents = coalesce(total_cents, 0) + amount_input,
       status = 'open'
@@ -84,7 +100,7 @@ begin
 
   if not found then
     insert into public.restaurant_tables (id, status, total_cents)
-    values (table_id_input, 'open', greatest(amount_input, 0))
+    values (table_id_input, 'open', amount_input)
     on conflict (id) do update
     set total_cents = coalesce(public.restaurant_tables.total_cents, 0) + excluded.total_cents,
         status = 'open';

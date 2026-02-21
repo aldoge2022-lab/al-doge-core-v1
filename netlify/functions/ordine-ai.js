@@ -146,7 +146,7 @@ exports.handler = async function (event) {
       for (const item of normalizedCart) {
         if (item.type === "pizza") {
           const unitAmount = pizzaUnitAmount(item, pizzasById);
-          if (!unitAmount || unitAmount < MIN_PAYMENT_CENTS) {
+          if (unitAmount === null || unitAmount < MIN_PAYMENT_CENTS) {
             return { statusCode: 400, body: "Invalid input" };
           }
           const pizza = pizzasById.get(item.id);

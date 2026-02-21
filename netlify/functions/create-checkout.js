@@ -33,7 +33,7 @@ exports.handler = async function (event) {
       return { statusCode: 404, body: JSON.stringify({ error: 'Order not found' }) };
     }
 
-    if (order.paid === true || order.status !== 'pending') {
+    if (order.paid || order.status !== 'pending') {
       return { statusCode: 409, body: JSON.stringify({ error: 'Order already processed' }) };
     }
     if (order.stripe_session_id) {

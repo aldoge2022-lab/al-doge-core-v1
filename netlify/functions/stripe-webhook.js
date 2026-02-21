@@ -41,7 +41,7 @@ exports.handler = async function (event) {
     return { statusCode: 200, body: 'Order not found' };
   }
 
-  if (order.paid === true) {
+  if (order.paid) {
     return { statusCode: 200, body: 'Already paid' };
   }
 
@@ -59,13 +59,14 @@ exports.handler = async function (event) {
 
   const { data: tableOrders, error: tableOrdersError } = await supabase
     .from('table_orders')
-    .select('total_cents, paid')
+    .select('id, total_cents, paid')
     .eq('table_id', order.table_id);
   if (tableOrdersError) {
     return { statusCode: 500, body: 'Table total recalculation failed' };
   }
 
   const remainingTotal = (tableOrders || []).reduce((sum, tableOrder) => {
+    if (tableOrder.id === order.id) return sum;
     return tableOrder.paid ? sum : sum + (Number(tableOrder.total_cents) || 0);
   }, 0);
 
