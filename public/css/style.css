@@ -47,6 +47,12 @@ body {
   letter-spacing: 2px;
 }
 
+.cart-indicator {
+  margin-top: 12px;
+  color: var(--gold);
+  font-weight: 600;
+}
+
 .menu-controls {
   margin-bottom: 40px;
 }
