@@ -98,3 +98,17 @@ test('creates checkout session from cart items payload', async () => {
   assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 600);
   assert.equal(checkoutCalls[0].line_items[0].quantity, 2);
 });
+
+test('returns 400 for cart items payload without valid prices', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      items: [
+        { id: 'margherita', quantity: 2, unit_price_cents: 0, name: 'Margherita' }
+      ]
+    })
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body, 'Invalid input');
+});

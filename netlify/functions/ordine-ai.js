@@ -8,6 +8,8 @@ const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 const MAX_INPUT_LENGTH = 500;
 const MAX_CHECKOUT_ITEMS = 30;
+const MAX_ITEM_QUANTITY = 20;
+const MAX_PRODUCT_NAME_LENGTH = 120;
 
 const MENU = {
   "margherita": 6,
@@ -105,14 +107,14 @@ exports.handler = async function (event) {
       }
 
       const line_items = rawItems.map((item) => {
-        const quantity = Math.max(1, Math.min(20, Number(item && item.quantity) || 1));
-        const unit_amount = Number(item && item.unit_price_cents);
-        const name = String((item && item.name) || (item && item.id) || "Prodotto").slice(0, 120);
+        const quantity = Math.max(1, Math.min(MAX_ITEM_QUANTITY, Number(item?.quantity) || 1));
+        const unitAmountCents = Number(item?.unit_price_cents);
+        const name = String(item?.name || item?.id || "Prodotto").slice(0, MAX_PRODUCT_NAME_LENGTH);
         return {
           price_data: {
             currency: "eur",
             product_data: { name },
-            unit_amount
+            unit_amount: unitAmountCents
           },
           quantity
         };

@@ -12,9 +12,9 @@ test('telegram-notify sends message when configured', async () => {
   process.env.TELEGRAM_BOT_TOKEN = 'token';
   process.env.TELEGRAM_CHAT_ID = 'chat';
 
-  let called = false;
-  global.fetch = async () => {
-    called = true;
+  let request;
+  global.fetch = async (url, options) => {
+    request = { url, options };
     return { ok: true };
   };
 
@@ -24,5 +24,33 @@ test('telegram-notify sends message when configured', async () => {
   });
 
   assert.equal(response.statusCode, 200);
-  assert.equal(called, true);
+  assert.match(request.url, /api\.telegram\.org\/bottoken\/sendMessage$/);
+  assert.equal(request.options.method, 'POST');
+  const payload = JSON.parse(request.options.body);
+  assert.equal(payload.chat_id, 'chat');
+  assert.equal(payload.text, 'Nuovo ordine test');
+});
+
+test('telegram-notify returns 400 for invalid message payload', async () => {
+  process.env.TELEGRAM_BOT_TOKEN = 'token';
+  process.env.TELEGRAM_CHAT_ID = 'chat';
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: '   ' })
+  });
+
+  assert.equal(response.statusCode, 400);
+});
+
+test('telegram-notify returns 500 when Telegram env is missing', async () => {
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  delete process.env.TELEGRAM_CHAT_ID;
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'test' })
+  });
+
+  assert.equal(response.statusCode, 500);
 });

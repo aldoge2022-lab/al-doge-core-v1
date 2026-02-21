@@ -1,3 +1,5 @@
+const MAX_MESSAGE_LENGTH = 1000;
+
 exports.handler = async function (event) {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method not allowed" };
@@ -10,7 +12,7 @@ exports.handler = async function (event) {
   try {
     const body = JSON.parse(event.body || "{}");
     const text = String(body.message || "").trim();
-    if (!text || text.length > 1000) {
+    if (!text || text.length > MAX_MESSAGE_LENGTH) {
       return { statusCode: 400, body: "Invalid input" };
     }
 
