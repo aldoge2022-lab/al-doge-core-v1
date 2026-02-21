@@ -82,12 +82,12 @@ test('creates checkout session and telegram notification for valid order', async
   assert.equal(telegramCalls.length, 1);
 });
 
-test('creates checkout session from cart items payload', async () => {
+test('creates checkout session from cart items payload with server-side catalog price', async () => {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({
       items: [
-        { id: 'margherita', quantity: 2, unit_price_cents: 600, name: 'Margherita' }
+        { id: 'margherita', quantity: 2, unit_price_cents: 9999, name: 'Margherita' }
       ]
     })
   });
@@ -95,16 +95,16 @@ test('creates checkout session from cart items payload', async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(JSON.parse(response.body).url, 'https://checkout.example/session');
   assert.equal(checkoutCalls.length, 1);
-  assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 600);
+  assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 700);
   assert.equal(checkoutCalls[0].line_items[0].quantity, 2);
 });
 
-test('returns 400 for cart items payload without valid prices', async () => {
+test('returns 400 for cart items payload with invalid product id', async () => {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({
       items: [
-        { id: 'margherita', quantity: 2, unit_price_cents: 0, name: 'Margherita' }
+        { id: 'prodotto-inesistente', quantity: 2, unit_price_cents: 0, name: 'Margherita' }
       ]
     })
   });

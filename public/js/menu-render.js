@@ -1,6 +1,6 @@
 (function () {
   const state = {
-    data: null,
+    data: window.ALDOGE_CATALOG || null,
     size: null
   };
 
@@ -62,25 +62,22 @@
       button.onclick = function () {
         const product = state.data.menu.find((entry) => entry.id === button.getAttribute('data-add-id'));
         Cart.addItem({
+          type: 'pizza',
           id: product.id,
-          name: product.name,
-          size: state.size,
-          unit_price_cents: finalPrice(product.base_price_cents)
+          dough: state.size,
+          extras: [],
+          quantity: 1
         });
+        window.dispatchEvent(new CustomEvent('product-added', { detail: { type: 'pizza', id: product.id } }));
       };
     });
   }
 
-  fetch('/data/menu.json')
-    .then((response) => response.json())
-    .then((data) => {
-      state.data = data;
-      state.size = data.size_engine.default;
-      renderSizeSelector();
-      renderMenu();
-    })
-    .catch(function (error) {
-      console.error(error);
-      document.getElementById('menu').textContent = 'Errore nel caricamento del menu';
-    });
+  if (state.data) {
+    state.size = state.data.size_engine.default;
+    renderSizeSelector();
+    renderMenu();
+  } else {
+    document.getElementById('menu').textContent = 'Errore nel caricamento del menu';
+  }
 })();

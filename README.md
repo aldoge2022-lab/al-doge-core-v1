@@ -9,8 +9,11 @@ al-doge-core-v1
 │   ├── css/
 │   ├── js/
 │   └── data/
+│       └── catalog.js
 ├── netlify/
 │   └── functions/
+│       ├── create-checkout.js
+│       ├── openai-suggestion.js
 │       ├── ordine-ai.js
 │       └── stripe-webhook.js
 ├── tests/

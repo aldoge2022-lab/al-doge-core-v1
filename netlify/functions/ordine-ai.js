@@ -1,4 +1,6 @@
 const Stripe = require("stripe");
+const catalog = require("../../data/catalog");
+const { handler: createCheckoutHandler } = require("./create-checkout");
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY non configurata");
@@ -66,7 +68,6 @@ function extractItems(text) {
 
 async function sendTelegramNotification(message) {
   if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
-    console.log("Telegram non configurato");
     return;
   }
 
@@ -106,43 +107,31 @@ exports.handler = async function (event) {
         return { statusCode: 400, body: "Invalid input" };
       }
 
-      const line_items = rawItems.map((item) => {
+      const drinkIds = new Set((catalog.drinks || []).map((drink) => drink.id));
+      const normalizedCart = rawItems.map((item) => {
         const quantity = Math.max(1, Math.min(MAX_ITEM_QUANTITY, Number(item?.quantity) || 1));
-        const unitAmountCents = Number(item?.unit_price_cents);
-        const name = String(item?.name || item?.id || "Prodotto").slice(0, MAX_PRODUCT_NAME_LENGTH);
+        const type = item?.type || (drinkIds.has(item?.id) ? "drink" : "pizza");
+        if (type === "drink") {
+          return {
+            type,
+            id: String(item?.id || ""),
+            quantity
+          };
+        }
+
         return {
-          price_data: {
-            currency: "eur",
-            product_data: { name },
-            unit_amount: unitAmountCents
-          },
+          type: "pizza",
+          id: String(item?.id || ""),
+          dough: String(item?.dough || catalog.size_engine.default),
+          extras: Array.isArray(item?.extras) ? item.extras : [],
           quantity
         };
-      }).filter((item) => Number.isFinite(item.price_data.unit_amount) && item.price_data.unit_amount > 0);
-
-      if (!line_items.length) {
-        return { statusCode: 400, body: "Invalid input" };
-      }
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        line_items,
-        mode: "payment",
-        success_url: `${process.env.SITE_URL}/success.html`,
-        cancel_url: `${process.env.SITE_URL}/cancel.html`
       });
 
-      await sendTelegramNotification(`
-🛒 Nuovo checkout web
-💰 Righe ordine: ${line_items.length}
-🔗 Pagamento: ${session.url}
-🕒 ${new Date().toLocaleString("it-IT")}
-`);
-
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ url: session.url })
-      };
+      return createCheckoutHandler({
+        httpMethod: "POST",
+        body: JSON.stringify({ cart: normalizedCart })
+      });
     }
 
     const message = (body.message || "").trim();

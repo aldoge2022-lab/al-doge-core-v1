@@ -1,0 +1,117 @@
+const Stripe = require('stripe');
+const catalog = require('../../data/catalog');
+
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('STRIPE_SECRET_KEY non configurata');
+}
+
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const MAX_ITEMS = 30;
+const MAX_QTY = 20;
+
+function invalid() {
+  return { statusCode: 400, body: 'Invalid input' };
+}
+
+function toQty(value) {
+  const qty = Number(value);
+  if (!Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) return null;
+  return qty;
+}
+
+function pizzaUnitAmount(item, pizzasById) {
+  const pizza = pizzasById.get(item.id);
+  if (!pizza) return null;
+  const dough = catalog.doughs[item.dough] || catalog.doughs.normale;
+  const extras = Array.isArray(item.extras) ? item.extras : [];
+  const extrasTotal = extras.reduce((sum, extraId) => {
+    const extra = catalog.extras[extraId];
+    return sum + (extra ? extra.price_cents : 0);
+  }, 0);
+  return pizza.base_price_cents + dough.surcharge_cents + extrasTotal;
+}
+
+exports.handler = async function (event) {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method not allowed' };
+  }
+
+  if (!process.env.SITE_URL) {
+    return { statusCode: 500, body: 'SITE_URL non configurato' };
+  }
+
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const cart = Array.isArray(body.cart) ? body.cart : null;
+    if (!cart || !cart.length || cart.length > MAX_ITEMS) return invalid();
+
+    const pizzasById = new Map((catalog.menu || []).filter((p) => p.active).map((p) => [p.id, p]));
+    const drinksById = new Map((catalog.drinks || []).filter((d) => d.active).map((d) => [d.id, d]));
+    const line_items = [];
+
+    for (const rawItem of cart) {
+      if (!rawItem || typeof rawItem !== 'object') return invalid();
+      const quantity = toQty(rawItem.quantity);
+      if (!quantity) return invalid();
+
+      if (rawItem.type === 'pizza') {
+        if (!rawItem.id || !rawItem.dough) return invalid();
+        const unitAmount = pizzaUnitAmount(rawItem, pizzasById);
+        if (!unitAmount || unitAmount <= 0) return invalid();
+        const pizza = pizzasById.get(rawItem.id);
+        line_items.push({
+          price_data: {
+            currency: 'eur',
+            product_data: { name: pizza.name },
+            unit_amount: unitAmount
+          },
+          quantity
+        });
+        continue;
+      }
+
+      if (rawItem.type === 'drink') {
+        const drink = drinksById.get(rawItem.id);
+        if (!drink) return invalid();
+        line_items.push({
+          price_data: {
+            currency: 'eur',
+            product_data: { name: drink.name },
+            unit_amount: drink.price_cents
+          },
+          quantity
+        });
+        continue;
+      }
+
+      return invalid();
+    }
+
+    if (body.service === 'sala') {
+      const people = toQty(body.people || cart.reduce((sum, it) => sum + toQty(it.quantity), 0) || 1);
+      if (!people) return invalid();
+      line_items.push({
+        price_data: {
+          currency: 'eur',
+          product_data: { name: 'Coperto' },
+          unit_amount: Number(catalog.cover_charge_cents) || 0
+        },
+        quantity: people
+      });
+    }
+
+    if (!line_items.length) return invalid();
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items,
+      mode: 'payment',
+      success_url: `${process.env.SITE_URL}/success.html`,
+      cancel_url: `${process.env.SITE_URL}/cancel.html`
+    });
+
+    return { statusCode: 200, body: JSON.stringify({ url: session.url }) };
+  } catch (error) {
+    return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
+  }
+};
