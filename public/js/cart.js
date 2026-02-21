@@ -513,7 +513,7 @@ document.addEventListener('DOMContentLoaded', () => {
       splitWrap.className = 'cart-total-row';
       splitWrap.innerHTML = `
         <label for="splitPersonsInput">Numero persone:</label>
-        <input id="splitPersonsInput" type="number" min="1" value="2" style="width:72px" />
+        <input id="splitPersonsInput" class="table-split-input" type="number" min="1" value="2" />
         <button id="splitToggleBtn" class="cart-checkout" type="button" aria-pressed="false">Dividi conto</button>
       `;
       footer.insertBefore(splitWrap, footer.firstChild);

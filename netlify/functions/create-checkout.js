@@ -9,6 +9,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const MAX_ITEMS = 30;
 const MAX_QTY = 20;
+const MAX_SPLIT_PERSONS = 50;
 const MIN_PAYMENT_CENTS = 1;
 
 function invalid() {
@@ -131,7 +132,7 @@ exports.handler = async function (event) {
     if (total_cents < MIN_PAYMENT_CENTS) return invalid();
     if (amount_override_cents !== null && (!Number.isInteger(amount_override_cents) || amount_override_cents < MIN_PAYMENT_CENTS)) return invalid();
     if (amount_override_cents !== null && !split_mode) return invalid();
-    if (split_mode && (!Number.isInteger(split_persons) || split_persons < 1 || split_persons > MAX_QTY)) return invalid();
+    if (split_mode && (!Number.isInteger(split_persons) || split_persons < 1 || split_persons > MAX_SPLIT_PERSONS)) return invalid();
 
     const { data: order, error: orderError } = await supabase
       .from('orders')
@@ -160,7 +161,12 @@ exports.handler = async function (event) {
     }
 
     const charge_cents = amount_override_cents !== null ? amount_override_cents : total_cents;
-    if ((Number(order.paid_cents) || 0) + charge_cents > (Number(order.total_cents) || total_cents)) {
+    const order_total_cents = Number(order.total_cents);
+    const order_paid_cents = Number(order.paid_cents) || 0;
+    if (!Number.isInteger(order_total_cents) || order_total_cents < MIN_PAYMENT_CENTS) {
+      return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
+    }
+    if (order_paid_cents + charge_cents > order_total_cents) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Importo superiore al totale residuo.' }) };
     }
 

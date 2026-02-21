@@ -33,9 +33,12 @@ Module._load = function (request, parent, isMain) {
       from: (table) => {
         if (table === 'orders') {
           return {
-            insert: () => ({
+            insert: (rows) => ({
               select: () => ({
-                single: async () => ({ data: { id: 'ord_1' }, error: null })
+                single: async () => ({
+                  data: { id: 'ord_1', total_cents: rows[0].total_cents, paid_cents: rows[0].paid_cents },
+                  error: null
+                })
               })
             })
           };

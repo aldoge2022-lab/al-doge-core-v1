@@ -30,7 +30,10 @@ const supabaseMock = {
             single: async () => {
               insertedOrders.push(rows);
               if (ordersInsertError) return { data: null, error: ordersInsertError };
-              return { data: { id: 'ord_1' }, error: null };
+              return {
+                data: { id: 'ord_1', total_cents: rows[0].total_cents, paid_cents: rows[0].paid_cents },
+                error: null
+              };
             }
           })
         })

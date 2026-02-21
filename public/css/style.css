@@ -205,6 +205,10 @@ button:hover {
   cursor:not-allowed;
 }
 
+.table-split-input{
+  width:72px;
+}
+
 /* Backdrop */
 .cart-drawer-backdrop{
   position: fixed;

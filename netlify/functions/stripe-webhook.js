@@ -50,11 +50,16 @@ exports.handler = async function (event) {
         if (orderReadError || !order) {
           console.error("Errore lettura ordine split:", orderReadError?.message || "ORDER_NOT_FOUND");
         } else {
-          const paid_cents = (Number(order.paid_cents) || 0) + amount_paid_cents;
-          const status = paid_cents >= (Number(order.total_cents) || 0) ? "paid" : "partial";
+          const order_total_cents = Number(order.total_cents);
+          if (!Number.isInteger(order_total_cents) || order_total_cents < 1) {
+            console.error("Totale ordine non valido in modalità split:", order_id);
+            return { statusCode: 500, body: "Order total invalid" };
+          }
+          const updated_paid_cents = (Number(order.paid_cents) || 0) + amount_paid_cents;
+          const status = updated_paid_cents >= order_total_cents ? "paid" : "partial";
           let orderUpdate = supabase
             .from("orders")
-            .update({ paid_cents, status })
+            .update({ paid_cents: updated_paid_cents, status })
             .eq("id", order_id);
           if (table_number) {
             orderUpdate = orderUpdate.eq("type", "table").eq("table_number", table_number);
