@@ -1,7 +1,10 @@
-const fs = require('node:fs');
-const path = require('node:path');
-
 const MAX_MESSAGE_LENGTH = 400;
+const MENU_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let menuCache = {
+  expiresAt: 0,
+  data: null
+};
 
 function getCorsHeaders() {
   let allowedOrigin = '*';
@@ -19,12 +22,6 @@ function getCorsHeaders() {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Content-Type': 'application/json'
   };
-}
-
-function loadMenuData() {
-  const menuPath = path.join(process.cwd(), 'public', 'data', 'menu.json');
-  const content = fs.readFileSync(menuPath, 'utf8');
-  return JSON.parse(content);
 }
 
 function clampQty(value) {
@@ -52,6 +49,67 @@ function parseFromMessage(message, activeProducts) {
   return items;
 }
 
+function getBaseUrl(event) {
+  if (process.env.SITE_URL) {
+    try {
+      return new URL(process.env.SITE_URL).origin;
+    } catch (_) {
+      // fallback to request headers
+    }
+  }
+
+  const headers = event.headers || {};
+  const host = headers.host || headers.Host;
+  if (!host) {
+    throw new Error('Missing host header');
+  }
+
+  const protoHeader = headers['x-forwarded-proto'] || headers['X-Forwarded-Proto'];
+  const proto = protoHeader ? String(protoHeader).split(',')[0].trim() : 'https';
+  return `${proto}://${host}`;
+}
+
+function validateMenuData(menuData) {
+  if (!menuData || typeof menuData !== 'object') {
+    throw new Error('Invalid menu payload');
+  }
+
+  if (!Array.isArray(menuData.menu)) {
+    throw new Error('Invalid menu list');
+  }
+
+  const validActive = menuData.menu.some(
+    (item) => item && item.active === true && item.id && /^[a-z0-9-]+$/i.test(String(item.id))
+  );
+
+  if (!validActive) {
+    throw new Error('No active menu items available');
+  }
+
+  return menuData;
+}
+
+async function fetchMenuData(event) {
+  const now = Date.now();
+  if (menuCache.data && menuCache.expiresAt > now) {
+    return menuCache.data;
+  }
+
+  const baseUrl = getBaseUrl(event);
+  const response = await fetch(`${baseUrl}/data/menu.json`);
+  if (!response.ok) {
+    throw new Error(`Menu fetch failed (${response.status})`);
+  }
+
+  const menuData = validateMenuData(await response.json());
+  menuCache = {
+    data: menuData,
+    expiresAt: now + MENU_CACHE_TTL_MS
+  };
+
+  return menuData;
+}
+
 exports.handler = async function (event) {
   const headers = getCorsHeaders();
 
@@ -71,8 +129,8 @@ exports.handler = async function (event) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid input' }) };
     }
 
-    const menuData = loadMenuData();
-    const activeProducts = (menuData.menu || []).filter(
+    const menuData = await fetchMenuData(event);
+    const activeProducts = menuData.menu.filter(
       (item) => item && item.active && item.id && /^[a-z0-9-]+$/i.test(String(item.id))
     );
     const activeIds = new Set(activeProducts.map((item) => item.id));
@@ -97,13 +155,31 @@ exports.handler = async function (event) {
     };
   } catch (error) {
     console.error('Errore ai-suggest:', error);
+
+    let code = 'AI_SUGGEST_ERROR';
+    if (String(error && error.message || '').startsWith('Menu fetch failed')) {
+      code = 'MENU_FETCH_FAILED';
+    } else if (String(error && error.message || '').includes('Missing host header')) {
+      code = 'MISSING_HOST_HEADER';
+    } else if (String(error && error.message || '').includes('Invalid menu')) {
+      code = 'INVALID_MENU_DATA';
+    } else if (String(error && error.message || '').includes('No active menu items')) {
+      code = 'NO_ACTIVE_MENU_ITEMS';
+    }
+
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({
         items: [],
-        note: 'Errore tecnico temporaneo.'
+        note: 'Errore tecnico temporaneo.',
+        code
       })
     };
   }
+};
+
+
+exports.__resetMenuCache = function () {
+  menuCache = { data: null, expiresAt: 0 };
 };
