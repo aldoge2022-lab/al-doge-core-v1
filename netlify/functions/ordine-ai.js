@@ -1,6 +1,5 @@
 const Stripe = require("stripe");
 const catalog = require("../../data/catalog");
-const { handler: createCheckoutHandler } = require("./create-checkout");
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY non configurata");
@@ -12,6 +11,7 @@ const MAX_INPUT_LENGTH = 500;
 const MAX_CHECKOUT_ITEMS = 30;
 const MAX_ITEM_QUANTITY = 20;
 const MAX_PRODUCT_NAME_LENGTH = 120;
+const MIN_PAYMENT_CENTS = 1;
 
 const MENU = {
   "margherita": 6,
@@ -64,6 +64,18 @@ function extractItems(text) {
   }
 
   return found;
+}
+
+function pizzaUnitAmount(item, pizzasById) {
+  const pizza = pizzasById.get(item.id);
+  if (!pizza) return null;
+  const dough = catalog.doughs[item.dough] || catalog.doughs.normale;
+  const extras = Array.isArray(item.extras) ? item.extras : [];
+  const extrasTotal = extras.reduce((sum, extraId) => {
+    const extra = catalog.extras[extraId];
+    return sum + (extra ? extra.price_cents : 0);
+  }, 0);
+  return pizza.base_price_cents + dough.surcharge_cents + extrasTotal;
 }
 
 async function sendTelegramNotification(message) {
@@ -128,10 +140,49 @@ exports.handler = async function (event) {
         };
       });
 
-      return createCheckoutHandler({
-        httpMethod: "POST",
-        body: JSON.stringify({ cart: normalizedCart })
+      const pizzasById = new Map((catalog.menu || []).filter((p) => p.active).map((p) => [p.id, p]));
+      const drinksById = new Map((catalog.drinks || []).filter((d) => d.active).map((d) => [d.id, d]));
+      const line_items = [];
+      for (const item of normalizedCart) {
+        if (item.type === "pizza") {
+          const unitAmount = pizzaUnitAmount(item, pizzasById);
+          if (unitAmount === null || unitAmount < MIN_PAYMENT_CENTS) {
+            return { statusCode: 400, body: "Invalid input" };
+          }
+          const pizza = pizzasById.get(item.id);
+          line_items.push({
+            price_data: {
+              currency: "eur",
+              product_data: { name: String(pizza.name).slice(0, MAX_PRODUCT_NAME_LENGTH) },
+              unit_amount: unitAmount
+            },
+            quantity: item.quantity
+          });
+          continue;
+        }
+        const drink = drinksById.get(item.id);
+        if (!drink) {
+          return { statusCode: 400, body: "Invalid input" };
+        }
+        line_items.push({
+          price_data: {
+            currency: "eur",
+            product_data: { name: String(drink.name).slice(0, MAX_PRODUCT_NAME_LENGTH) },
+            unit_amount: drink.price_cents
+          },
+          quantity: item.quantity
+        });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items,
+        mode: "payment",
+        success_url: `${process.env.SITE_URL}/success.html`,
+        cancel_url: `${process.env.SITE_URL}/cancel.html`
       });
+
+      return { statusCode: 200, body: JSON.stringify({ url: session.url }) };
     }
 
     const message = (body.message || "").trim();
