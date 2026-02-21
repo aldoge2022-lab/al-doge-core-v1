@@ -1,6 +1,7 @@
 const OpenAI = require('openai');
 const fs = require('node:fs');
 const path = require('node:path');
+const CENTS_TO_EUROS = 100;
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -28,13 +29,13 @@ exports.handler = async (event) => {
     ];
     const catalogPath = catalogCandidates.find((candidate) => fs.existsSync(candidate));
     if (!catalogPath) {
-      throw new Error('Catalog file not found');
+      throw new Error(`Catalog file not found in: ${catalogCandidates.join(', ')}`);
     }
     const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
     const pizzaList = (catalog.menu || [])
       .filter((item) => item.active !== false)
       .map((item) => {
-        const price = Number(item.base_price_cents || 0) / 100;
+        const price = Number(item.base_price_cents || 0) / CENTS_TO_EUROS;
         const category = item.category || (Array.isArray(item.tags) && item.tags[0]) || 'pizza';
         return `${item.name} (€${price.toFixed(2)}, categoria: ${category})`;
       })
