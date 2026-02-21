@@ -96,6 +96,16 @@
     });
   });
 
+  async function readJsonSafe(response) {
+    const text = await response.text();
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function updateDrinkSuggestionBox() {
     if (!drinkSuggestionBox || !drinkSuggestionTitle || !drinkSuggestionReason || !drinkSuggestionAddBtn || !window.Cart) return;
     try {
@@ -104,21 +114,21 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cart: window.Cart.getCart() })
       });
-      const payload = await response.json();
-      if (!response.ok || !payload.suggested_drink) {
+      const data = await readJsonSafe(response);
+      if (!response.ok || !data || !data.suggested_drink) {
         drinkSuggestionBox.hidden = true;
         return;
       }
 
       const catalog = window.ALDOGE_CATALOG || { drinks: [] };
-      const drink = (catalog.drinks || []).find((entry) => entry.name === payload.suggested_drink);
+      const drink = (catalog.drinks || []).find((entry) => entry.name === data.suggested_drink);
       if (!drink) {
         drinkSuggestionBox.hidden = true;
         return;
       }
 
-      drinkSuggestionTitle.textContent = `🥤 Abbinalo così: ${payload.suggested_drink}`;
-      drinkSuggestionReason.textContent = payload.reason || '';
+      drinkSuggestionTitle.textContent = `🥤 Abbinalo così: ${data.suggested_drink}`;
+      drinkSuggestionReason.textContent = data.reason || '';
       drinkSuggestionAddBtn.onclick = function () {
         window.Cart.addItem({ type: 'drink', id: drink.id, quantity: 1 });
       };
@@ -148,9 +158,13 @@
         body: JSON.stringify({ message: message })
       });
 
-      const payload = await response.json();
+      const payload = await readJsonSafe(response);
       if (!response.ok) {
-        resultEl.textContent = payload.error || 'Errore nella generazione.';
+        resultEl.textContent = (payload && payload.error) || 'Errore nella generazione.';
+        return;
+      }
+      if (!payload) {
+        resultEl.textContent = 'Errore nella generazione.';
         return;
       }
 
