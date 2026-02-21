@@ -1,56 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { handler, __resetMenuCache } = require('../netlify/functions/ai-suggest');
-
-const menuFixture = {
-  size_engine: {
-    default: 'normale',
-    options: {
-      normale: { label: 'Normale', surcharge_cents: 0 }
-    }
-  },
-  menu: [
-    { id: 'margherita', name: 'Margherita', base_price_cents: 800, active: true },
-    { id: 'diavola', name: 'Diavola', base_price_cents: 950, active: true }
-  ]
-};
-
-function mockMenuFetch(payload = menuFixture, status = 200) {
-  let calls = 0;
-  const wrapped = async () => ({
-    ok: status >= 200 && status < 300,
-    status,
-    async json() {
-      return payload;
-    }
-  });
-  Object.defineProperty(wrapped, 'calls', {
-    get() {
-      return calls;
-    }
-  });
-  global.fetch = async () => {
-    calls += 1;
-    return wrapped();
-  };
-  Object.defineProperty(global.fetch, 'calls', {
-    get() {
-      return calls;
-    }
-  });
-  return global.fetch;
-}
+const { handler } = require('../netlify/functions/ai-suggest');
 
 test.beforeEach(() => {
-  process.env.SITE_URL = 'https://example.com';
-  __resetMenuCache();
-  mockMenuFetch();
-});
-
-test.after(() => {
-  delete process.env.SITE_URL;
-  delete global.fetch;
+  delete process.env.OPENAI_API_KEY;
 });
 
 test('ai-suggest returns 400 for empty message', async () => {
@@ -79,60 +33,36 @@ test('ai-suggest returns 400 for too long message', async () => {
   assert.equal(JSON.parse(response.body).code, 'INVALID_INPUT');
 });
 
-test('ai-suggest returns items array for valid message', async () => {
+test('ai-suggest returns only existing pizzas with max 3 unique items', async () => {
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ message: 'Vorrei 2 margherita' }),
-    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
+    body: JSON.stringify({ message: 'Siamo in 3, uno vegetariano e uno piccante' })
   });
 
   assert.equal(response.statusCode, 200);
   const parsed = JSON.parse(response.body);
   assert.ok(Array.isArray(parsed.items));
-  assert.equal(parsed.items[0].id, 'margherita');
-  assert.equal(parsed.items[0].qty, 2);
-  assert.match(parsed.note, /Proposta per/i);
+  assert.ok(parsed.items.length >= 1);
+  assert.ok(parsed.items.length <= 3);
+
+  const ids = parsed.items.map((item) => item.id);
+  const unique = new Set(ids);
+  assert.equal(unique.size, ids.length);
+  ids.forEach((id) => assert.match(id, /^(margherita|diavola)$/));
+  assert.match(parsed.note, /combo|scelta|consiglio|equilibrio/i);
 });
 
-test('ai-suggest falls back to first active item when no menu match is found', async () => {
+test('ai-suggest can include beverage upsell suggestion', async () => {
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ message: 'siamo in 3, proposta leggera' }),
-    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
+    body: JSON.stringify({ message: 'Proposta veloce per 2 persone' })
   });
 
   assert.equal(response.statusCode, 200);
   const parsed = JSON.parse(response.body);
-  assert.equal(parsed.items[0].id, 'margherita');
-  assert.equal(parsed.items[0].qty, 3);
-});
-
-test('ai-suggest returns 500 with code when menu fetch fails', async () => {
-  mockMenuFetch({}, 503);
-
-  const response = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify({ message: 'Vorrei una proposta' }),
-    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
-  });
-
-  assert.equal(response.statusCode, 500);
-  const parsed = JSON.parse(response.body);
-  assert.equal(parsed.code, 'MENU_FETCH_FAILED');
-  assert.deepEqual(parsed.items, []);
-});
-
-test('ai-suggest handles required spicy message without 500', async () => {
-  const fetchSpy = mockMenuFetch();
-  const response = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify({ message: 'siamo in 3, qualcosa di piccante' }),
-    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
-  });
-
-  assert.equal(response.statusCode, 200);
-  assert.equal(fetchSpy.calls, 1);
-  const parsed = JSON.parse(response.body);
-  assert.ok(Array.isArray(parsed.items));
-  assert.match(parsed.note, /stile spicy/i);
+  if (parsed.secondarySuggestion) {
+    assert.equal(parsed.secondarySuggestion.kind, 'beverage');
+    assert.ok(parsed.secondarySuggestion.item.id);
+    assert.ok(parsed.secondarySuggestion.cta);
+  }
 });

@@ -1,13 +1,9 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const localCatalog = require('../../data/catalog');
+
 const MAX_MESSAGE_LENGTH = 400;
-const MENU_CACHE_TTL_MS = 60 * 1000;
-const PREFERENCE_KEYWORDS = {
-  spicy: ['piccante', 'diavola', 'pepperoni'],
-  light: ['leggera', 'light', 'delicata'],
-  premium: ['premium', 'gourmet', 'speciale']
-};
-const BEVERAGE_KEYWORDS = /(bevanda|drink|cola|fanta|acqua|birra)/;
-const PREMIUM_KEYWORDS = /(premium|gourmet|special)/;
-let menuCache = null;
+const MAX_ITEMS = 3;
 
 function getCorsHeaders() {
   return {
@@ -29,136 +25,186 @@ function errorResponse(headers, statusCode, code, message, extra = {}) {
 function clampQty(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 1;
-  return Math.max(1, Math.min(5, Math.round(n)));
+  return Math.max(1, Math.min(3, Math.round(n)));
 }
 
-function parsePeople(message) {
+function detectPeople(message) {
   const lower = String(message || '').toLowerCase();
   const match = lower.match(/(?:siamo|in|per)\s+(\d{1,2})/) || lower.match(/(\d{1,2})\s+persone?/);
-  return clampQty(match ? Number(match[1]) : 1);
+  const people = match ? Number(match[1]) : 2;
+  return Math.max(1, Math.min(6, Number.isFinite(people) ? people : 2));
 }
 
-function parsePreference(message) {
-  const lower = String(message || '').toLowerCase();
-  if (!lower) return null;
-
-  for (const [key, keywords] of Object.entries(PREFERENCE_KEYWORDS)) {
-    if (keywords.some((keyword) => lower.includes(keyword))) return key;
-  }
-
-  return null;
+function parseCategory(pizza) {
+  if (pizza && pizza.category) return String(pizza.category);
+  if (pizza && Array.isArray(pizza.tags) && pizza.tags.length) return String(pizza.tags[0]);
+  return 'classica';
 }
 
-function dedupeItems(items) {
-  const byId = new Map();
-  (items || []).forEach((item) => {
-    if (!item || !item.id) return;
-    byId.set(item.id, clampQty((byId.get(item.id) || 0) + clampQty(item.qty)));
-  });
-  return [...byId.entries()].map(([id, qty]) => ({ id, qty }));
-}
+function loadCatalogFromDisk() {
+  const candidates = [
+    path.resolve(process.cwd(), 'public/data/catalog.json'),
+    path.resolve(process.cwd(), 'public/data/menu.json')
+  ];
 
-function parseFromMessage(message, activeProducts) {
-  const lower = message.toLowerCase();
-  const items = [];
-
-  activeProducts.forEach((product) => {
-    const id = String(product.id).toLowerCase();
-    const name = String(product.name || '').toLowerCase();
-    if (!lower.includes(id) && !(name && lower.includes(name))) return;
-
-    const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const qtyBefore = lower.match(new RegExp(`(\\d+)\\s*(x)?\\s*${escaped}`));
-    const qtyAfter = lower.match(new RegExp(`${escaped}\\s*(x)?\\s*(\\d+)`));
-    const qty = qtyBefore ? qtyBefore[1] : (qtyAfter ? qtyAfter[2] : 1);
-    items.push({ id: product.id, qty: clampQty(qty) });
-  });
-
-  return items;
-}
-
-function maybeAddInvisibleUpsell(items, activeProducts, people, preference) {
-  if (!Array.isArray(activeProducts) || !activeProducts.length) return null;
-  const ids = new Set((items || []).map((item) => item.id));
-  const beverage = activeProducts.find((item) => {
-    const text = `${item.id} ${item.name || ''}`.toLowerCase();
-    return !ids.has(item.id) && BEVERAGE_KEYWORDS.test(text);
-  });
-  if (beverage) {
-    return {
-      kind: 'beverage',
-      item: { id: beverage.id, qty: clampQty(Math.ceil(people / 2)) },
-      cta: 'Aggiungi bevanda'
-    };
-  }
-
-  if (preference === 'premium') {
-    const premium = activeProducts.find((item) => {
-      const text = `${item.id} ${item.name || ''}`.toLowerCase();
-      return !ids.has(item.id) && PREMIUM_KEYWORDS.test(text);
-    });
-    if (premium) {
-      return {
-        kind: 'premium',
-        item: { id: premium.id, qty: 1 },
-        cta: 'Passa a opzione premium'
-      };
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      if (parsed && Array.isArray(parsed.menu)) return parsed;
+    } catch (_) {
+      // fallback below
     }
   }
 
-  return null;
+  return localCatalog;
 }
 
-function buildConversionNote(items, secondarySuggestion, people, preference) {
-  const count = (items || []).reduce((sum, item) => sum + clampQty(item.qty), 0);
-  const parts = [`Proposta per ${people} persone`];
-  if (count) parts.push(`${count} pezzi consigliati`);
-  if (preference) parts.push(`stile ${preference}`);
-  if (secondarySuggestion) parts.push(`upsell ${secondarySuggestion.kind}`);
-  return `${parts.join(', ')}.`;
-}
+function normalizeCatalog(catalog) {
+  const pizzas = (catalog.menu || [])
+    .filter((p) => p && p.active && p.id && p.name)
+    .map((p) => ({
+      id: String(p.id),
+      name: String(p.name),
+      price_cents: Number(p.base_price_cents) || 0,
+      category: parseCategory(p)
+    }));
 
-function getBaseUrl(event) {
-  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/$/, '');
-  const headers = event && event.headers ? event.headers : {};
-  const host = headers.host || headers.Host;
-  const proto = headers['x-forwarded-proto'] || headers['X-Forwarded-Proto'] || 'https';
-  if (host) return `${proto}://${host}`;
-  return 'http://localhost:8888';
-}
+  const drinks = (catalog.drinks || [])
+    .filter((d) => d && d.active && d.id && d.name)
+    .map((d) => ({
+      id: String(d.id),
+      name: String(d.name),
+      price_cents: Number(d.price_cents) || 0
+    }));
 
-function validateMenuData(menuData) {
-  if (!menuData || typeof menuData !== 'object') {
-    throw new Error('Invalid menu payload');
+  if (!pizzas.length) {
+    throw new Error('NO_PIZZAS_AVAILABLE');
   }
 
-  if (!Array.isArray(menuData.menu)) {
-    throw new Error('Invalid menu list');
-  }
-
-  const validActive = menuData.menu.some(
-    (item) => item && item.active === true && item.id && /^[a-z0-9-]+$/i.test(String(item.id))
-  );
-
-  if (!validActive) {
-    throw new Error('No active menu items available');
-  }
-
-  return menuData;
+  return { pizzas, drinks };
 }
 
-async function fetchMenuData(event) {
-  const now = Date.now();
-  if (menuCache && now - menuCache.fetchedAt < MENU_CACHE_TTL_MS) return menuCache.data;
+function buildPrompt(message, pizzas, drinks) {
+  const pizzaList = pizzas
+    .map((p) => `${p.id}: ${p.name} (€${(p.price_cents / 100).toFixed(2)}) [${p.category}]`)
+    .join(', ');
+  const drinkList = drinks
+    .map((d) => `${d.id}: ${d.name} (€${(d.price_cents / 100).toFixed(2)})`)
+    .join(', ');
 
-  const baseUrl = getBaseUrl(event);
-  const response = await fetch(`${baseUrl}/data/menu.json`);
-  if (!response.ok) throw new Error('MENU_FETCH_FAILED');
+  return `Sei il consulente vendite di AL DOGE.\nCliente: "${message}"\nPizze disponibili: ${pizzaList}\nBibite disponibili: ${drinkList || 'nessuna'}\nRegole: proponi solo id esistenti, max 3 pizze diverse, evita duplicati, tono commerciale breve, massimo 4 righe nel campo note. Rispondi SOLO JSON: {"items":[{"id":"pizza-id","qty":1}],"drink_id":"id-opzionale","note":"testo breve"}.`;
+}
 
-  const parsed = await response.json();
-  const validated = validateMenuData(parsed);
-  menuCache = { data: validated, fetchedAt: now };
-  return validated;
+async function callOpenAI(message, pizzas, drinks) {
+  if (!process.env.OPENAI_API_KEY) return null;
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || 'gpt-5.2-mini',
+      input: buildPrompt(message, pizzas, drinks)
+    })
+  });
+
+  if (!response.ok) throw new Error('OPENAI_REQUEST_FAILED');
+
+  const payload = await response.json();
+  const text = String(payload.output_text || '').trim();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return null;
+  }
+}
+
+function heuristicSuggestion(message, pizzas, drinks) {
+  const lower = message.toLowerCase();
+  const selected = [];
+
+  const pushUnique = (pizza) => {
+    if (!pizza || selected.find((entry) => entry.id === pizza.id)) return;
+    selected.push({ id: pizza.id, qty: 1 });
+  };
+
+  pizzas.forEach((pizza) => {
+    const name = pizza.name.toLowerCase();
+    const id = pizza.id.toLowerCase();
+    if (lower.includes(name) || lower.includes(id)) pushUnique(pizza);
+  });
+
+  const wantsVegetarian = /vegetarian|veg/i.test(lower);
+  const wantsSpicy = /piccante|spicy|diavola/i.test(lower);
+
+  if (wantsVegetarian) {
+    pushUnique(pizzas.find((p) => /vegetar/i.test(p.name) || /vegetar/i.test(p.category)) || pizzas[0]);
+  }
+  if (wantsSpicy) {
+    pushUnique(pizzas.find((p) => /diavola|piccante/i.test(p.name) || /piccante/i.test(p.category)) || pizzas[0]);
+  }
+
+  for (const pizza of pizzas) {
+    if (selected.length >= MAX_ITEMS) break;
+    pushUnique(pizza);
+  }
+
+  const people = detectPeople(message);
+  selected.forEach((item, idx) => {
+    item.qty = idx === 0 ? clampQty(Math.ceil(people / Math.min(MAX_ITEMS, selected.length || 1))) : 1;
+  });
+
+  const drink = drinks.find((d) => /birra|acqua|cola/i.test(d.name)) || drinks[0] || null;
+
+  return {
+    items: selected.slice(0, MAX_ITEMS),
+    drink_id: drink ? drink.id : null,
+    note: 'Scelta top per oggi: gusto equilibrato e alta resa. Completa con bibita per combo perfetta.'
+  };
+}
+
+function sanitizeSuggestion(raw, pizzas, drinks) {
+  const pizzaById = new Map(pizzas.map((p) => [p.id, p]));
+  const items = Array.isArray(raw && raw.items) ? raw.items : [];
+  const seen = new Set();
+  const validItems = [];
+
+  for (const item of items) {
+    const id = String(item && item.id ? item.id : '');
+    if (!pizzaById.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    validItems.push({ id, qty: clampQty(item.qty) });
+    if (validItems.length >= MAX_ITEMS) break;
+  }
+
+  if (!validItems.length) {
+    validItems.push({ id: pizzas[0].id, qty: 1 });
+  }
+
+  const drinkId = String(raw && raw.drink_id ? raw.drink_id : '');
+  const drink = drinks.find((d) => d.id === drinkId) || null;
+
+  const note = String(raw && raw.note ? raw.note : '').trim();
+  const compactNote = note
+    ? note.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 4).join('\n')
+    : 'Ti consiglio una combo pronta: ottimo equilibrio e scontrino smart.';
+
+  return {
+    items: validItems,
+    secondarySuggestion: drink
+      ? {
+          kind: 'beverage',
+          item: { id: drink.id, qty: 1 },
+          cta: `Aggiungi ${drink.name}`
+        }
+      : null,
+    note: compactNote
+  };
 }
 
 exports.handler = async function (event) {
@@ -180,41 +226,21 @@ exports.handler = async function (event) {
       return errorResponse(headers, 400, 'INVALID_INPUT', 'Invalid input');
     }
 
-    const people = parsePeople(message) || clampQty(body.people || 1);
-    const preference = parsePreference(message);
-    const menuData = await fetchMenuData(event);
-    const activeProducts = menuData.menu.filter(
-      (item) => item && item.active && item.id && /^[a-z0-9-]+$/i.test(String(item.id))
-    );
-    const activeIds = new Set(activeProducts.map((item) => item.id));
+    const catalog = loadCatalogFromDisk();
+    const { pizzas, drinks } = normalizeCatalog(catalog);
 
-    let items = parseFromMessage(message, activeProducts);
-    if (!items.length && activeProducts.length) {
-      items = [{ id: activeProducts[0].id, qty: people }];
+    let rawSuggestion = await callOpenAI(message, pizzas, drinks);
+    if (!rawSuggestion) {
+      rawSuggestion = heuristicSuggestion(message, pizzas, drinks);
     }
-
-    const validItems = dedupeItems(items
-      .filter((item) => activeIds.has(item.id))
-      .map((item) => ({ id: item.id, qty: item.qty })));
-    const secondarySuggestion = maybeAddInvisibleUpsell(validItems, activeProducts, people, preference);
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({
-        items: validItems,
-        secondarySuggestion,
-        note: buildConversionNote(validItems, secondarySuggestion, people, preference)
-      })
+      body: JSON.stringify(sanitizeSuggestion(rawSuggestion, pizzas, drinks))
     };
   } catch (error) {
     console.error('Errore ai-suggest:', error);
-    const code = error && error.message === 'MENU_FETCH_FAILED' ? 'MENU_FETCH_FAILED' : 'AI_SUGGEST_ERROR';
-    return errorResponse(headers, 500, code, 'Errore tecnico temporaneo.', { items: [], note: '' });
+    return errorResponse(headers, 500, 'AI_SUGGEST_ERROR', 'Errore tecnico temporaneo.', { items: [], note: '' });
   }
-};
-
-
-exports.__resetMenuCache = function () {
-  menuCache = null;
 };

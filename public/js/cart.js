@@ -219,6 +219,17 @@ function alDogeFormatEUR(v) {
 }
 
 
+
+function alDogeGetTableNumberFromQuery() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const value = String(params.get('table_number') || '').trim();
+    return /^[A-Za-z0-9_-]{1,20}$/.test(value) ? value : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function alDogeProceedToCheckout(cart) {
   const checkoutItems = Array.isArray(cart)
     ? cart.map((item) => ({
@@ -230,7 +241,12 @@ async function alDogeProceedToCheckout(cart) {
     }))
     : [];
 
-  const response = await fetch('/.netlify/functions/create-checkout', {
+  const tableNumber = alDogeGetTableNumberFromQuery();
+  const checkoutEndpoint = tableNumber
+    ? `/.netlify/functions/create-checkout?table_number=${encodeURIComponent(tableNumber)}`
+    : '/.netlify/functions/create-checkout';
+
+  const response = await fetch(checkoutEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cart: checkoutItems })
