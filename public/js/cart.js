@@ -1,6 +1,8 @@
 (function () {
   const STORAGE_KEY = 'cart';
+  const ALTERNATE_STORAGE_KEY = 'aldoge_cart';
   const LEGACY_STORAGE_KEY = 'al_doge_cart_v1';
+  const CHECKOUT_SUCCESS_STATUS = 'success';
   const FALLBACK_CATALOG = { menu: [], drinks: [], doughs: { normale: { surcharge_cents: 0 } }, extras: {} };
   const catalog = window.ALDOGE_CATALOG || FALLBACK_CATALOG;
 
@@ -195,9 +197,9 @@
     const params = new URLSearchParams(window.location.search);
     const status = params.get('checkout');
 
-    if (status === 'success') {
+    if (status === CHECKOUT_SUCCESS_STATUS) {
       localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem('aldoge_cart');
+      localStorage.removeItem(ALTERNATE_STORAGE_KEY);
       localStorage.removeItem(LEGACY_STORAGE_KEY);
 
       if (typeof window.renderCart === 'function') {
@@ -208,7 +210,9 @@
         window.updateBadge();
       }
 
-      window.history.replaceState({}, document.title, window.location.pathname);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('checkout');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
     }
   })();
 })();
