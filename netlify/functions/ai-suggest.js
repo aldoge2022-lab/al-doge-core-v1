@@ -111,6 +111,12 @@ function dedupeItems(items) {
   return Array.from(map.entries()).map(([id, qty]) => ({ id, qty }));
 }
 
+
+function isProposalMode(message) {
+  const lower = String(message || '').toLowerCase();
+  return ['proposta', 'consiglia', 'sugger', 'menu'].some((keyword) => lower.includes(keyword));
+}
+
 function productById(activeProducts, id) {
   return activeProducts.find((item) => item.id === id) || null;
 }
@@ -121,8 +127,8 @@ function getTopPricedProduct(activeProducts, excludedId) {
     .sort((a, b) => Number(b.base_price_cents || 0) - Number(a.base_price_cents || 0))[0] || null;
 }
 
-function maybeAddInvisibleUpsell(activeProducts, items, peopleQty) {
-  if (peopleQty < 2 || activeProducts.length < 2) return items;
+function maybeAddInvisibleUpsell(activeProducts, items, peopleQty, allowUpsell) {
+  if (!allowUpsell || peopleQty < 2 || activeProducts.length < 2) return items;
 
   const current = dedupeItems(items);
   if (current.length > 1) return current;
@@ -250,6 +256,7 @@ exports.handler = async function (event) {
     const preference = parsePreference(message);
 
     let items = parseFromMessage(message, activeProducts);
+    const explicitItemsFound = items.length > 0;
 
     if (!items.length) {
       const preferred = chooseProductByPreference(activeProducts, preference);
@@ -262,7 +269,15 @@ exports.handler = async function (event) {
       items = [{ id: activeProducts[0].id, qty: peopleQty }];
     }
 
-    items = maybeAddInvisibleUpsell(activeProducts, items, peopleQty);
+    if (explicitItemsFound && peopleQty > 1) {
+      const allDefaultQty = items.every((item) => Number(item.qty || 1) === 1);
+      if (allDefaultQty) {
+        items = items.map((item) => ({ id: item.id, qty: peopleQty }));
+      }
+    }
+
+    const allowUpsell = !explicitItemsFound || isProposalMode(message);
+    items = maybeAddInvisibleUpsell(activeProducts, items, peopleQty, allowUpsell);
 
     const validItems = dedupeItems(items)
       .filter((item) => activeIds.has(item.id))

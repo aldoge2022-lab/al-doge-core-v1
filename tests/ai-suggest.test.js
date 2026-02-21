@@ -125,6 +125,21 @@ test('ai-suggest avoids upsell for single person requests', async () => {
   assert.equal(parsed.items[0].id, 'margherita');
 });
 
+
+test('ai-suggest does not force upsell on explicit multi-person order intent', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Vorrei margherita per 3 persone' }),
+    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
+  });
+
+  assert.equal(response.statusCode, 200);
+  const parsed = JSON.parse(response.body);
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.items[0].id, 'margherita');
+  assert.equal(parsed.items[0].qty, 3);
+});
+
 test('ai-suggest returns 500 with code when menu fetch fails', async () => {
   mockMenuFetch({}, 503);
 
