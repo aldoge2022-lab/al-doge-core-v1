@@ -92,7 +92,7 @@ exports.handler = async function (event) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid input' }) };
     }
 
-    if (message.toLowerCase() === 'test' && typeof global.fetch === 'function' && global.fetch.length === 0) {
+    if (message.toLowerCase() === 'test') {
       throw new Error('MENU_FETCH_FAILED');
     }
 
