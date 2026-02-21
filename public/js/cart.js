@@ -190,6 +190,27 @@
   window.calculatePreviewTotal = () => Cart.calculatePreviewTotal();
   window.calculateTotal = () => Cart.calculatePreviewTotal();
   window.clearCart = () => Cart.clearCart();
+
+  (function handleCheckoutRedirect() {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('checkout');
+
+    if (status === 'success') {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem('aldoge_cart');
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+
+      if (typeof window.renderCart === 'function') {
+        window.renderCart();
+      }
+
+      if (typeof window.updateBadge === 'function') {
+        window.updateBadge();
+      }
+
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  })();
 })();
 
 // =========================
