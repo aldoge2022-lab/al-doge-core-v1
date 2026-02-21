@@ -25,36 +25,66 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { table_id, items } = JSON.parse(event.body || '{}');
+    console.log('Payload ricevuto:', event.body);
 
-    if (!table_id || !Array.isArray(items) || !items.length) {
+    let payload;
+    try {
+      payload = JSON.parse(event.body || '{}');
+    } catch (_) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'Missing required fields' })
+        body: JSON.stringify({ error: 'Invalid JSON payload' })
+      };
+    }
+
+    const { table_id, items } = payload;
+
+    if (typeof table_id !== 'number' || !Number.isFinite(table_id)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Missing table_id' })
+      };
+    }
+    if (!Array.isArray(items)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Missing items array' })
+      };
+    }
+    if (!items.length) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Items array cannot be empty' })
       };
     }
 
     const catalogPrices = buildCatalogPrices();
     let total_cents = 0;
-    for (const item of items) {
-      if (!item || typeof item !== 'object' || !item.id) {
+    for (const [index, item] of items.entries()) {
+      if (!item || typeof item !== 'object') {
         return {
           statusCode: 400,
-          body: JSON.stringify({ error: 'Invalid item' })
+          body: JSON.stringify({ error: `Invalid item at index ${index}` })
+        };
+      }
+      if (!item.id || typeof item.id !== 'string') {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: `Missing item id at index ${index}` })
         };
       }
       const qty = Number(item.qty);
       if (!Number.isInteger(qty) || qty < 1) {
         return {
           statusCode: 400,
-          body: JSON.stringify({ error: 'Invalid qty' })
+          body: JSON.stringify({ error: `Invalid qty for item: ${item.id}` })
         };
       }
       const unitPrice = catalogPrices.get(item.id);
       if (!Number.isInteger(unitPrice)) {
         return {
           statusCode: 400,
-          body: JSON.stringify({ error: 'Invalid item' })
+          body: JSON.stringify({ error: `Item not found in catalog: ${item.id}` })
         };
       }
       total_cents += (unitPrice * qty);

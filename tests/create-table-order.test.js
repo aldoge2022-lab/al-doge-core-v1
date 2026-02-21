@@ -59,10 +59,19 @@ test('create-table-order rejects non-POST', async () => {
 test('create-table-order validates required fields', async () => {
   const response = await handler({
     httpMethod: 'POST',
+    body: JSON.stringify({ items: [{ id: 'margherita', qty: 1 }] })
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).error, 'Missing table_id');
+});
+
+test('create-table-order validates empty items array', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
     body: JSON.stringify({ table_id: 7, items: [] })
   });
   assert.equal(response.statusCode, 400);
-  assert.equal(JSON.parse(response.body).error, 'Missing required fields');
+  assert.equal(JSON.parse(response.body).error, 'Items array cannot be empty');
 });
 
 test('create-table-order recalculates total from catalog and updates table total', async () => {
@@ -100,7 +109,7 @@ test('create-table-order rejects unknown catalog item', async () => {
     })
   });
   assert.equal(response.statusCode, 400);
-  assert.equal(JSON.parse(response.body).error, 'Invalid item');
+  assert.equal(JSON.parse(response.body).error, 'Item not found in catalog: not-exists');
 });
 
 test('create-table-order rejects qty <= 0', async () => {
@@ -112,5 +121,5 @@ test('create-table-order rejects qty <= 0', async () => {
     })
   });
   assert.equal(response.statusCode, 400);
-  assert.equal(JSON.parse(response.body).error, 'Invalid qty');
+  assert.equal(JSON.parse(response.body).error, 'Invalid qty for item: margherita');
 });
