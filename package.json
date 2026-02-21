@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/aldoge2022-lab/al-doge-core-v1#readme",
   "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
     "stripe": "^20.3.1"
   }
 }
