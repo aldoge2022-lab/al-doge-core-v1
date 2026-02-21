@@ -84,6 +84,25 @@
     localStorage.removeItem(LEGACY_STORAGE_KEY);
   }
 
+  function renderCart() {
+    if (typeof window.alDogeRenderCartDrawer === 'function') {
+      window.alDogeRenderCartDrawer();
+    }
+  }
+
+  function updateBadge() {
+    const cart = read();
+    const badge = document.getElementById('cartBadge');
+    if (badge) badge.textContent = String(cart.reduce((sum, item) => sum + item.quantity, 0));
+  }
+
+  function commitCart(cart) {
+    write(cart);
+    renderCart();
+    updateBadge();
+    emitUpdated();
+  }
+
   function emitUpdated() {
     window.dispatchEvent(new Event('cart-updated'));
   }
@@ -105,8 +124,7 @@
         cart.push(normalizedItem);
       }
 
-      write(cart);
-      emitUpdated();
+      commitCart(cart);
       return cart;
     },
     addItem(item) {
@@ -123,25 +141,21 @@
       } else {
         cart.splice(index, 1);
       }
-      write(cart);
-      emitUpdated();
+      commitCart(cart);
       return cart;
     },
     removeFromCart(productId) {
       const cart = typeof productId === 'object'
         ? read().filter((entry) => cartItemKey(entry) !== cartItemKey(normalizeItem(productId)))
         : read().filter((entry) => entry.id !== productId);
-      write(cart);
-      emitUpdated();
+      commitCart(cart);
       return cart;
     },
     removeItem(productId) {
       return this.removeFromCart(productId);
     },
     updateBadge() {
-      const cart = read();
-      const badge = document.getElementById('cartBadge');
-      if (badge) badge.textContent = String(cart.reduce((sum, item) => sum + item.quantity, 0));
+      updateBadge();
     },
     calculatePreviewTotal() {
       const cart = read();
@@ -155,9 +169,7 @@
       return this.calculatePreviewTotal();
     },
     clearCart() {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(LEGACY_STORAGE_KEY);
-      emitUpdated();
+      commitCart([]);
       return [];
     }
   };
@@ -167,6 +179,7 @@
   window.decreaseQuantity = (productId) => Cart.decreaseQuantity(productId);
   window.removeFromCart = (productId) => Cart.removeFromCart(productId);
   window.removeItem = (productId) => Cart.removeItem(productId);
+  window.renderCart = () => renderCart();
   window.updateBadge = () => Cart.updateBadge();
   window.calculatePreviewTotal = () => Cart.calculatePreviewTotal();
   window.calculateTotal = () => Cart.calculatePreviewTotal();
@@ -254,6 +267,7 @@ async function alDogeProceedToCheckoutSafe(cart) {
 }
 
 function alDogeRenderCartDrawer() {
+  const catalog = window.ALDOGE_CATALOG || { menu: [], drinks: [], doughs: {}, extras: {} };
   const cart = alDogeGetCartSafe();
   const count = alDogeCalcCount(cart);
   const total = alDogeCalcTotal(cart);
