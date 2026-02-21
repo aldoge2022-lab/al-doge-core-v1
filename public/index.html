@@ -28,12 +28,12 @@
   </div>
 </section>
 
-<div id="cartDrawerBackdrop" class="cart-drawer-backdrop" hidden></div>
+<div id="cartBackdrop" class="cart-drawer-backdrop" hidden></div>
 
 <aside id="cartDrawer" class="cart-drawer" aria-hidden="true" aria-labelledby="cartDrawerTitle">
   <div class="cart-drawer-header">
     <div id="cartDrawerTitle" class="cart-drawer-title">Il tuo carrello</div>
-    <button id="cartCloseBtn" class="cart-close" type="button">Chiudi</button>
+    <button id="cartCloseBtn" class="cart-close" type="button" aria-label="Chiudi carrello">×</button>
   </div>
   <div class="cart-drawer-body">
     <div id="cartDrawerEmpty" class="cart-empty">Il carrello è vuoto.</div>
@@ -44,6 +44,7 @@
       <span>Totale</span>
       <strong id="cartDrawerTotal">€ 0.00</strong>
     </div>
+    <button id="cartBackToMenuBtn" class="cart-back-menu" type="button">Torna al menu</button>
     <button id="cartCheckoutBtn" class="cart-checkout cart-checkout-full" type="button" disabled>
       Vai al pagamento
     </button>

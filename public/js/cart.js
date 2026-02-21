@@ -178,7 +178,7 @@ function alDogeRenderCartDrawer() {
 
 function alDogeOpenDrawer() {
   const drawer = document.getElementById('cartDrawer');
-  const backdrop = document.getElementById('cartDrawerBackdrop');
+  const backdrop = document.getElementById('cartBackdrop') || document.getElementById('cartDrawerBackdrop');
   const openBtn = document.getElementById('cartOpenBtn');
   if (!drawer || !backdrop) return;
 
@@ -191,7 +191,7 @@ function alDogeOpenDrawer() {
 
 function alDogeCloseDrawer() {
   const drawer = document.getElementById('cartDrawer');
-  const backdrop = document.getElementById('cartDrawerBackdrop');
+  const backdrop = document.getElementById('cartBackdrop') || document.getElementById('cartDrawerBackdrop');
   const openBtn = document.getElementById('cartOpenBtn');
   if (!drawer || !backdrop) return;
 
@@ -207,11 +207,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const openBtn = document.getElementById('cartOpenBtn');
   const closeBtn = document.getElementById('cartCloseBtn');
-  const backdrop = document.getElementById('cartDrawerBackdrop');
+  const backdrop = document.getElementById('cartBackdrop') || document.getElementById('cartDrawerBackdrop');
+  const backToMenuBtn = document.getElementById('cartBackToMenuBtn');
 
   if (openBtn) openBtn.addEventListener('click', alDogeOpenDrawer);
   if (closeBtn) closeBtn.addEventListener('click', alDogeCloseDrawer);
   if (backdrop) backdrop.addEventListener('click', alDogeCloseDrawer);
+  if (backToMenuBtn) backToMenuBtn.addEventListener('click', alDogeCloseDrawer);
 
   document.addEventListener('keydown', (e) => {
     const drawer = document.getElementById('cartDrawer');
