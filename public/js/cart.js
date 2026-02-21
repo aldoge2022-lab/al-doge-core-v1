@@ -1,11 +1,12 @@
 (function () {
   (function initTableMode() {
     const params = new URLSearchParams(window.location.search);
-    const table = params.get('table');
+    const table = String(params.get('table') || '').trim();
     if (table && /^[A-Za-z0-9_-]{1,20}$/.test(table)) {
+      localStorage.setItem('table_id', table);
       sessionStorage.setItem('active_table', table);
       document.body.classList.add('table-mode');
-    } else if (sessionStorage.getItem('active_table')) {
+    } else if (localStorage.getItem('table_id') || sessionStorage.getItem('active_table')) {
       document.body.classList.add('table-mode');
     }
   })();
@@ -278,7 +279,7 @@ function alDogeFormatEUR(v) {
 function alDogeGetTableNumberFromQuery() {
   try {
     const params = new URLSearchParams(window.location.search || '');
-    const value = String(sessionStorage.getItem('active_table') || params.get('table') || params.get('table_number') || '').trim();
+    const value = String(localStorage.getItem('table_id') || sessionStorage.getItem('active_table') || params.get('table') || params.get('table_number') || '').trim();
     return /^[A-Za-z0-9_-]{1,20}$/.test(value) ? value : null;
   } catch (_) {
     return null;
@@ -313,6 +314,7 @@ async function alDogeProceedToCheckout(cart) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       cart: checkoutItems,
+      ...(tableNumber ? { table: tableNumber } : {}),
       ...(tableNumber ? { table_number: tableNumber } : {}),
       ...(splitMode ? {
         split_mode: true,

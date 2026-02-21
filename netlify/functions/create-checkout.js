@@ -52,7 +52,7 @@ exports.handler = async function (event) {
 
   try {
     const body = JSON.parse(event.body || '{}');
-    const table_number = normalizeTableNumber(body.table_number || event.queryStringParameters?.table_number);
+    const table_number = normalizeTableNumber(body.table || body.table_number || event.queryStringParameters?.table || event.queryStringParameters?.table_number);
     const split_mode = body.split_mode === true;
     const split_persons = Number(body.split_persons);
     const amount_override_cents = body.amount_override_cents === undefined ? null : Number(body.amount_override_cents);
@@ -187,6 +187,7 @@ exports.handler = async function (event) {
       mode: 'payment',
       metadata: {
         order_id: String(order.id),
+        table: table_number || 'asporto',
         ...(split_mode ? { payment_mode: 'split', split_persons: String(split_persons) } : {}),
         ...(table_number ? { table_number } : {})
       },

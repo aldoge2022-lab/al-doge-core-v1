@@ -31,6 +31,32 @@ test('telegram-notify sends message when configured', async () => {
   assert.equal(payload.text, 'Nuovo ordine test');
 });
 
+test('telegram-notify formats order payload when message is omitted', async () => {
+  process.env.TELEGRAM_BOT_TOKEN = 'token';
+  process.env.TELEGRAM_CHAT_ID = 'chat';
+
+  let request;
+  global.fetch = async (url, options) => {
+    request = { url, options };
+    return { ok: true };
+  };
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      order: { table: '7', payment_mode: 'card' },
+      itemsList: '• Margherita x1',
+      total: 12.5
+    })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const payload = JSON.parse(request.options.body);
+  assert.match(payload.text, /NUOVO ORDINE TAVOLO 7/);
+  assert.match(payload.text, /Pagamento: CARD/);
+  assert.match(payload.text, /Totale: €12.50/);
+});
+
 test('telegram-notify returns 400 for invalid message payload', async () => {
   process.env.TELEGRAM_BOT_TOKEN = 'token';
   process.env.TELEGRAM_CHAT_ID = 'chat';

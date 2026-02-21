@@ -126,3 +126,23 @@ test('stripe-webhook keeps full payment flow for non-split', async () => {
   assert.equal(orderUpdates[0].paid_cents, 2100);
   assert.equal(paymentInserts[0][0].payment_mode, 'full');
 });
+
+test('stripe-webhook accepts table metadata fallback', async () => {
+  const response = await handler({
+    headers: { 'stripe-signature': 'sig' },
+    body: JSON.stringify({
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_split_3',
+          amount_total: 1500,
+          metadata: { order_id: 'ord_1', table: '7', payment_mode: 'split' }
+        }
+      }
+    })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(orderUpdates[0].paid_cents, 1500);
+  assert.equal(orderUpdates[0].status, 'partial');
+});
