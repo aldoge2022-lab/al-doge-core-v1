@@ -1,83 +1,87 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Module = require('node:module');
-
-const originalLoad = Module._load;
-const openaiState = {
-  calls: [],
-  createImpl: async () => ({ output_text: 'Prova risposta' })
-};
-
-Module._load = function mockOpenAILoad(request, parent, isMain) {
-  if (request === 'openai') {
-    return function OpenAI(config) {
-      return {
-        config,
-        responses: {
-          create: async (payload) => {
-            openaiState.calls.push({ config, payload });
-            return openaiState.createImpl(payload, config);
-          }
-        }
-      };
-    };
-  }
-  return originalLoad.call(this, request, parent, isMain);
-};
 
 const aiSuggestPath = require.resolve('../netlify/functions/ai-suggest');
 delete require.cache[aiSuggestPath];
 const { handler } = require('../netlify/functions/ai-suggest');
+const originalFetch = global.fetch;
+const fetchState = {
+  calls: [],
+  impl: async () => ({
+    ok: true,
+    async json() {
+      return { output_text: 'Nota commerciale breve' };
+    }
+  })
+};
+
+global.fetch = async (url, options) => {
+  fetchState.calls.push({ url, options });
+  return fetchState.impl(url, options);
+};
 
 test.beforeEach(() => {
-  openaiState.calls = [];
-  openaiState.createImpl = async () => ({ output_text: 'Prova risposta' });
+  fetchState.calls = [];
+  fetchState.impl = async () => ({
+    ok: true,
+    async json() {
+      return { output_text: 'Nota commerciale breve' };
+    }
+  });
   process.env.OPENAI_API_KEY = 'test-key';
 });
 
 test.after(() => {
   delete process.env.OPENAI_API_KEY;
   delete require.cache[aiSuggestPath];
-  Module._load = originalLoad;
+  global.fetch = originalFetch;
 });
 
 test('ai-suggest returns 405 for non-POST requests', async () => {
   const response = await handler({ httpMethod: 'GET' });
   assert.equal(response.statusCode, 405);
-  assert.equal(response.body, 'Method Not Allowed');
+  assert.equal(JSON.parse(response.body).error, 'METHOD_NOT_ALLOWED');
 });
 
-test('ai-suggest returns 400 when message is missing', async () => {
+test('ai-suggest returns 400 INVALID_INPUT when message is missing', async () => {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({})
   });
   assert.equal(response.statusCode, 400);
-  assert.equal(JSON.parse(response.body).error, 'Missing message');
+  assert.equal(JSON.parse(response.body).error, 'INVALID_INPUT');
 });
 
-test('ai-suggest returns OpenAI reply payload on success', async () => {
+test('ai-suggest returns deterministic items and OpenAI commercial note', async () => {
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ message: 'Consigliami una pizza' })
+    body: JSON.stringify({ message: 'Siamo in 4, vogliamo una pizza piccante' })
   });
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers['Content-Type'], 'application/json');
-  assert.equal(JSON.parse(response.body).reply, 'Prova risposta');
-  assert.equal(openaiState.calls.length, 1);
-  assert.equal(openaiState.calls[0].config.apiKey, 'test-key');
-  assert.equal(openaiState.calls[0].payload.model, 'gpt-5-2-mini');
+  const body = JSON.parse(response.body);
+  assert.equal(body.note, 'Nota commerciale breve');
+  assert.equal(body.items.length <= 3, true);
+  assert.equal(body.items[0].id, 'diavola');
+  assert.equal(body.items[0].qty, 4);
+  assert.equal(body.secondarySuggestion.kind, 'beverage');
+  assert.equal(body.secondarySuggestion.item.id, 'birra-05');
+  assert.equal(body.secondarySuggestion.item.qty, 2);
+  assert.equal(fetchState.calls.length, 1);
+  assert.equal(fetchState.calls[0].url, 'https://api.openai.com/v1/responses');
 });
 
-test('ai-suggest returns 500 on runtime errors', async () => {
-  openaiState.createImpl = async () => {
+test('ai-suggest keeps deterministic payload when OpenAI call fails', async () => {
+  fetchState.impl = async () => {
     throw new Error('Boom');
   };
-
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ message: 'Consigliami una pizza' })
+    body: JSON.stringify({ message: 'Per 99 persone, margherita' })
   });
-  assert.equal(response.statusCode, 500);
-  assert.equal(JSON.parse(response.body).error, 'Boom');
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.equal(body.items.length <= 3, true);
+  assert.equal(body.items[0].qty, 5);
+  assert.equal(body.note, '');
 });
