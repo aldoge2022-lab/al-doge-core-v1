@@ -1,4 +1,6 @@
 const OpenAI = require('openai');
+const fs = require('node:fs');
+const path = require('node:path');
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -18,13 +20,41 @@ exports.handler = async (event) => {
       };
     }
 
+    const repoRoot = path.resolve(__dirname, '..', '..');
+    const catalogCandidates = [
+      path.join(repoRoot, 'public', 'data', 'catalog.json'),
+      path.join(repoRoot, 'public', 'data', 'menu.json'),
+      path.join(repoRoot, 'data', 'catalog.json')
+    ];
+    const catalogPath = catalogCandidates.find((candidate) => fs.existsSync(candidate));
+    if (!catalogPath) {
+      throw new Error('Catalog file not found');
+    }
+    const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+    const pizzaList = (catalog.menu || [])
+      .filter((item) => item.active !== false)
+      .map((item) => {
+        const price = Number(item.base_price_cents || 0) / 100;
+        const category = item.category || (Array.isArray(item.tags) && item.tags[0]) || 'pizza';
+        return `${item.name} (€${price.toFixed(2)}, categoria: ${category})`;
+      })
+      .join(', ');
+
     const client = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
     });
-
     const response = await client.responses.create({
       model: 'gpt-5-2-mini',
-      input: `Sei l'assistente AI della pizzeria AL DOGE. Rispondi in modo breve, concreto e proponi pizze dal menu. Cliente: ${message}`
+      input: `Sei il consulente vendite della pizzeria AL DOGE.
+Menu disponibile: ${pizzaList}
+
+Cliente dice: "${message}"
+
+Regole:
+- Suggerisci solo pizze presenti nel menu disponibile
+- Suggerisci massimo 3 pizze e senza ripetizioni
+- Sii breve (massimo 4 righe) e commerciale
+- Se opportuno, proponi anche una bibita`
     });
 
     return {
