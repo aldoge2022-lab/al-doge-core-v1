@@ -17,6 +17,39 @@
   </div>
 </header>
 
+<section class="cart-bar" aria-label="Carrello">
+  <button id="cartOpenBtn" class="cart-open" type="button" aria-controls="cartDrawer" aria-expanded="false">
+    Carrello
+    <span id="cartBadge" class="cart-badge">0</span>
+  </button>
+  <div class="cart-bar-right">
+    <div class="cart-bar-total">Totale: <span id="cartBarTotal">€ 0.00</span></div>
+    <button id="cartCheckoutBtnTop" class="cart-checkout" type="button" disabled>Vai al pagamento</button>
+  </div>
+</section>
+
+<div id="cartDrawerBackdrop" class="cart-drawer-backdrop" hidden></div>
+
+<aside id="cartDrawer" class="cart-drawer" aria-hidden="true" aria-labelledby="cartDrawerTitle">
+  <div class="cart-drawer-header">
+    <div id="cartDrawerTitle" class="cart-drawer-title">Il tuo carrello</div>
+    <button id="cartCloseBtn" class="cart-close" type="button">Chiudi</button>
+  </div>
+  <div class="cart-drawer-body">
+    <div id="cartDrawerEmpty" class="cart-empty">Il carrello è vuoto.</div>
+    <div id="cartDrawerItems" class="cart-items"></div>
+  </div>
+  <div class="cart-drawer-footer">
+    <div class="cart-total-row">
+      <span>Totale</span>
+      <strong id="cartDrawerTotal">€ 0.00</strong>
+    </div>
+    <button id="cartCheckoutBtn" class="cart-checkout cart-checkout-full" type="button" disabled>
+      Vai al pagamento
+    </button>
+  </div>
+</aside>
+
 <main class="container">
 
   <section class="menu-controls">
