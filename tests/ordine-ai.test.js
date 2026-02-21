@@ -28,6 +28,25 @@ Module._load = function (request, parent, isMain) {
   if (request === 'stripe') {
     return stripeMock;
   }
+  if (request === './_supabase') {
+    return {
+      from: (table) => {
+        if (table === 'orders') {
+          return {
+            insert: () => ({
+              select: () => ({
+                single: async () => ({ data: { id: 'ord_1' }, error: null })
+              })
+            })
+          };
+        }
+        if (table === 'order_items') {
+          return { insert: async () => ({ error: null }) };
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      }
+    };
+  }
   return originalLoad.call(this, request, parent, isMain);
 };
 const { handler } = require('../netlify/functions/ordine-ai');

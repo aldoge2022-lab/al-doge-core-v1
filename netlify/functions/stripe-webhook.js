@@ -1,4 +1,5 @@
 const Stripe = require("stripe");
+const supabase = require("./_supabase");
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY non configurata");
@@ -24,8 +25,36 @@ exports.handler = async function (event) {
 
   if (stripeEvent.type === "checkout.session.completed") {
     const session = stripeEvent.data.object;
-    const orderValue = session.amount_total / 100;
+    const total_cents = Number(session.amount_total) || 0;
+    const orderValue = total_cents / 100;
     const email = session.customer_details?.email || "Non fornita";
+    const order_id = session.metadata?.order_id;
+
+    if (order_id && total_cents > 0) {
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          status: "paid",
+          paid_cents: total_cents
+        })
+        .eq("id", order_id);
+
+      if (orderError) {
+        console.error("Errore aggiornamento ordine:", orderError.message);
+      } else {
+        const { error: paymentError } = await supabase.from("payments").insert([
+          {
+            order_id,
+            amount_cents: total_cents,
+            payment_mode: "full",
+            stripe_session_id: session.id
+          }
+        ]);
+        if (paymentError) {
+          console.error("Errore inserimento pagamento:", paymentError.message);
+        }
+      }
+    }
 
     if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
       try {

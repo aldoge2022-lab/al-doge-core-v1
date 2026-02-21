@@ -1,5 +1,6 @@
 const Stripe = require('stripe');
 const catalog = require('../../data/catalog');
+const supabase = require('./_supabase');
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('STRIPE_SECRET_KEY non configurata');
@@ -48,6 +49,7 @@ exports.handler = async function (event) {
     const pizzasById = new Map((catalog.menu || []).filter((p) => p.active).map((p) => [p.id, p]));
     const drinksById = new Map((catalog.drinks || []).filter((d) => d.active).map((d) => [d.id, d]));
     const line_items = [];
+    const orderItems = [];
 
     for (const rawItem of cart) {
       if (!rawItem || typeof rawItem !== 'object') return invalid();
@@ -67,6 +69,12 @@ exports.handler = async function (event) {
           },
           quantity
         });
+        orderItems.push({
+          product_type: rawItem.type,
+          product_id: rawItem.id,
+          quantity,
+          paid_quantity: 0
+        });
         continue;
       }
 
@@ -80,6 +88,12 @@ exports.handler = async function (event) {
             unit_amount: drink.price_cents
           },
           quantity
+        });
+        orderItems.push({
+          product_type: rawItem.type,
+          product_id: rawItem.id,
+          quantity,
+          paid_quantity: 0
         });
         continue;
       }
@@ -101,11 +115,33 @@ exports.handler = async function (event) {
     }
 
     if (!line_items.length) return invalid();
+    const total_cents = line_items.reduce((sum, item) => sum + (item.price_data.unit_amount * item.quantity), 0);
+    if (!total_cents || total_cents < 1) return invalid();
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .insert([
+        {
+          type: 'takeaway',
+          total_cents,
+          paid_cents: 0,
+          status: 'open'
+        }
+      ])
+      .select()
+      .single();
+    if (orderError || !order) return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
+
+    const { error: itemsError } = await supabase
+      .from('order_items')
+      .insert(orderItems.map((item) => ({ ...item, order_id: order.id })));
+    if (itemsError) return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items,
       mode: 'payment',
+      metadata: { order_id: String(order.id) },
       success_url: `${process.env.SITE_URL}/success.html`,
       cancel_url: `${process.env.SITE_URL}/cancel.html`
     });
