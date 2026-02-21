@@ -96,12 +96,13 @@
     });
   });
 
-  async function readJsonSafe(response) {
+  async function parseJsonSafely(response) {
     const text = await response.text();
     if (!text) return null;
     try {
       return JSON.parse(text);
-    } catch (_) {
+    } catch {
+      // Ignore non-JSON responses from error paths (e.g. 405 plain text body).
       return null;
     }
   }
@@ -114,7 +115,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cart: window.Cart.getCart() })
       });
-      const data = await readJsonSafe(response);
+      const data = await parseJsonSafely(response);
       if (!response.ok || !data || !data.suggested_drink) {
         drinkSuggestionBox.hidden = true;
         return;
@@ -158,7 +159,7 @@
         body: JSON.stringify({ message: message })
       });
 
-      const payload = await readJsonSafe(response);
+      const payload = await parseJsonSafely(response);
       if (!response.ok) {
         resultEl.textContent = (payload && payload.error) || 'Errore nella generazione.';
         return;
