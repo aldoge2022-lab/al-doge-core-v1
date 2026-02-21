@@ -303,9 +303,9 @@ button:hover {
   padding: 12px 14px;
   border-radius: 14px;
 }
-.cart-back{
-  width:100%;
-  margin-top:10px;
+.cart-back {
+  width: 100%;
+  margin-top: 10px;
   background: transparent;
   color: inherit;
   border: 1px solid rgba(255,255,255,0.12);

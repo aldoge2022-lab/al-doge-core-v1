@@ -223,6 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cart = (window.Cart && typeof window.Cart.getCart === 'function')
       ? window.Cart.getCart()
       : { items: [] };
+    if (!cart.items || !cart.items.length) return;
     window.proceedToCheckout(cart);
   }
 
@@ -259,7 +260,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (backdrop) backdrop.addEventListener('click', closeDrawerSafe);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeDrawerSafe();
+    const drawer = document.getElementById('cartDrawer');
+    if (e.key === 'Escape' && drawer && drawer.classList.contains('open')) closeDrawerSafe();
   });
 });
 
