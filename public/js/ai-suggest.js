@@ -80,7 +80,7 @@
       secondary.cta = secondary.cta || 'Sblocca upgrade premium';
     }
 
-    suggestion.note = `${suggestion.note || ''}${suggestion.note ? ' ' : ''}Conferma rapida: ${secondary.cta}.`.trim();
+    suggestion.note = [suggestion.note, `Conferma rapida: ${secondary.cta}.`].filter(Boolean).join(' ').trim();
     return suggestion;
   }
 

@@ -17,26 +17,29 @@ const menuFixture = {
 };
 
 function mockMenuFetch(payload = menuFixture, status = 200) {
-  const fn = async () => ({
+  let calls = 0;
+  const wrapped = async () => ({
     ok: status >= 200 && status < 300,
     status,
     async json() {
       return payload;
     }
   });
-  fn.calls = 0;
-  const wrapped = async (...args) => {
-    fn.calls += 1;
-    return fn(...args);
-  };
-  wrapped.calls = fn.calls;
   Object.defineProperty(wrapped, 'calls', {
     get() {
-      return fn.calls;
+      return calls;
     }
   });
-  global.fetch = wrapped;
-  return wrapped;
+  global.fetch = async () => {
+    calls += 1;
+    return wrapped();
+  };
+  Object.defineProperty(global.fetch, 'calls', {
+    get() {
+      return calls;
+    }
+  });
+  return global.fetch;
 }
 
 test.beforeEach(() => {

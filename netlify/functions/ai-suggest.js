@@ -5,6 +5,8 @@ const PREFERENCE_KEYWORDS = {
   light: ['leggera', 'light', 'delicata'],
   premium: ['premium', 'gourmet', 'speciale']
 };
+const BEVERAGE_KEYWORDS = /(bevanda|drink|cola|fanta|acqua|birra)/;
+const PREMIUM_KEYWORDS = /(premium|gourmet|special)/;
 let menuCache = null;
 
 function getCorsHeaders() {
@@ -80,7 +82,7 @@ function maybeAddInvisibleUpsell(items, activeProducts, people, preference) {
   const ids = new Set((items || []).map((item) => item.id));
   const beverage = activeProducts.find((item) => {
     const text = `${item.id} ${item.name || ''}`.toLowerCase();
-    return !ids.has(item.id) && /(bevanda|drink|cola|fanta|acqua|birra)/.test(text);
+    return !ids.has(item.id) && BEVERAGE_KEYWORDS.test(text);
   });
   if (beverage) {
     return {
@@ -93,7 +95,7 @@ function maybeAddInvisibleUpsell(items, activeProducts, people, preference) {
   if (preference === 'premium') {
     const premium = activeProducts.find((item) => {
       const text = `${item.id} ${item.name || ''}`.toLowerCase();
-      return !ids.has(item.id) && /(premium|gourmet|special)/.test(text);
+      return !ids.has(item.id) && PREMIUM_KEYWORDS.test(text);
     });
     if (premium) {
       return {
@@ -193,7 +195,7 @@ exports.handler = async function (event) {
 
     const validItems = dedupeItems(items
       .filter((item) => activeIds.has(item.id))
-      .map((item) => ({ id: item.id, qty: clampQty(item.qty) })));
+      .map((item) => ({ id: item.id, qty: item.qty })));
     const secondarySuggestion = maybeAddInvisibleUpsell(validItems, activeProducts, people, preference);
 
     return {
