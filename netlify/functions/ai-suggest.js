@@ -79,7 +79,7 @@ async function createCommercialNote(message, items, drinkUpsell) {
     const upsellText = drinkUpsell ? `${drinkUpsell.item.id} x${drinkUpsell.item.qty}` : 'nessuna bevanda';
     const prompt = `Scrivi una nota commerciale breve in italiano (max 18 parole) per questa proposta pizzeria. Cliente: "${String(message)}". Proposta: ${itemText}. Upsell bevanda: ${upsellText}.`;
 
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -87,15 +87,15 @@ async function createCommercialNote(message, items, drinkUpsell) {
       },
       body: JSON.stringify({
         model: 'gpt-5-2-mini',
-        input: prompt
+        messages: [{ role: 'user', content: prompt }]
       })
     });
     if (!response.ok) return '';
 
     const payload = await response.json();
-    const text = payload?.output_text
+    const text = payload?.choices?.[0]?.message?.content
+      || payload?.output_text
       || payload?.output?.[0]?.content?.[0]?.text
-      || payload?.choices?.[0]?.message?.content
       || '';
     return String(text || '').trim().slice(0, 240);
   } catch {

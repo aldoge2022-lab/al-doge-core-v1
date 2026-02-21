@@ -10,7 +10,7 @@ const fetchState = {
   impl: async () => ({
     ok: true,
     async json() {
-      return { output_text: 'Nota commerciale breve' };
+      return { choices: [{ message: { content: 'Nota commerciale breve' } }] };
     }
   })
 };
@@ -25,7 +25,7 @@ test.beforeEach(() => {
   fetchState.impl = async () => ({
     ok: true,
     async json() {
-      return { output_text: 'Nota commerciale breve' };
+      return { choices: [{ message: { content: 'Nota commerciale breve' } }] };
     }
   });
   process.env.OPENAI_API_KEY = 'test-key';
@@ -43,7 +43,7 @@ test('ai-suggest returns 405 for non-POST requests', async () => {
   assert.equal(JSON.parse(response.body).error, 'METHOD_NOT_ALLOWED');
 });
 
-test('ai-suggest returns 400 INVALID_INPUT when message is missing', async () => {
+test('ai-suggest returns 400 when message is missing', async () => {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({})
@@ -68,7 +68,7 @@ test('ai-suggest returns deterministic items and OpenAI commercial note', async 
   assert.equal(body.secondarySuggestion.item.id, 'birra-05');
   assert.equal(body.secondarySuggestion.item.qty, 2);
   assert.equal(fetchState.calls.length, 1);
-  assert.equal(fetchState.calls[0].url, 'https://api.openai.com/v1/responses');
+  assert.equal(fetchState.calls[0].url, 'https://api.openai.com/v1/chat/completions');
 });
 
 test('ai-suggest keeps deterministic payload when OpenAI call fails', async () => {
