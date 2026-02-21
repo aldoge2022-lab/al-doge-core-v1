@@ -312,3 +312,35 @@ button:hover {
   color: inherit;
 }
 /* ========================= */
+
+.ai-micro-confirm{
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(201,169,110,0.35);
+  border-radius: 10px;
+  background: rgba(201,169,110,0.1);
+  color: #f8e7c5;
+  font-weight: 700;
+}
+
+.ai-secondary-suggest{
+  margin-top: 10px;
+  color: var(--text-light);
+  font-size: 14px;
+}
+
+.ai-secondary-btn{
+  margin-top: 10px;
+  width: 100%;
+}
+
+.ai-secondary-btn:disabled{
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.ai-cta-hint{
+  margin-top: 10px;
+  color: #c9a96e;
+  font-weight: 700;
+}
