@@ -3,6 +3,7 @@
   const suggestBtn = document.getElementById('aiSuggestBtn');
   const resultEl = document.getElementById('aiResult');
   const addBtn = document.getElementById('aiAddBtn');
+  const quickActionButtons = document.querySelectorAll('[data-ai-quick]');
 
   if (!promptEl || !suggestBtn || !resultEl || !addBtn) return;
 
@@ -56,6 +57,14 @@
     addBtn.disabled = false;
   }
 
+
+  quickActionButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      promptEl.value = button.getAttribute('data-ai-quick') || '';
+      suggestBtn.click();
+    });
+  });
+
   suggestBtn.addEventListener('click', async function () {
     const message = promptEl.value.trim();
     addBtn.disabled = true;
@@ -76,7 +85,7 @@
 
       const payload = await response.json();
       if (!response.ok) {
-        resultEl.textContent = payload.error || 'Errore nella generazione.';
+        resultEl.textContent = [payload.note, payload.error, payload.code ? `Codice: ${payload.code}` : ''].filter(Boolean).join(' • ') || 'Errore nella generazione.';
         return;
       }
 

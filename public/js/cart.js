@@ -96,7 +96,35 @@ function alDogeFormatEUR(v) {
   return `€ ${Number(v).toFixed(2)}`;
 }
 
-function alDogeProceedToCheckoutSafe(cart) {
+
+async function alDogeProceedToCheckout(cart) {
+  const checkoutItems = Array.isArray(cart)
+    ? cart.map((item) => ({
+      id: item.id,
+      quantity: Number(item.quantity ?? item.qty ?? 1),
+      size: item.size,
+      unit_price_cents: Number(item.unit_price_cents ?? item.price_cents ?? 0),
+      name: item.name
+    }))
+    : [];
+
+  const response = await fetch('/.netlify/functions/ordine-ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items: checkoutItems })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || !payload || !payload.url) {
+    throw new Error((payload && (payload.error || payload.note)) || 'Checkout non disponibile');
+  }
+
+  window.location.href = payload.url;
+}
+
+window.proceedToCheckout = alDogeProceedToCheckout;
+
+async function alDogeProceedToCheckoutSafe(cart) {
   if (typeof window.proceedToCheckout === 'function') return window.proceedToCheckout(cart);
   if (typeof window.createCheckoutSession === 'function') return window.createCheckoutSession(cart);
   if (typeof window.checkout === 'function') return window.checkout(cart);
@@ -223,10 +251,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const btn1 = document.getElementById('cartCheckoutBtn');
   const btn2 = document.getElementById('cartCheckoutBtnTop');
 
-  function goCheckout() {
+  async function goCheckout() {
     const cart = alDogeGetCartSafe();
     if (!cart.length) return;
-    alDogeProceedToCheckoutSafe(cart);
+    try {
+      await alDogeProceedToCheckoutSafe(cart);
+    } catch (error) {
+      alert((error && error.message) || 'Errore checkout.');
+    }
   }
 
   if (btn1) btn1.addEventListener('click', goCheckout);
