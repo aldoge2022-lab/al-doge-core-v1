@@ -21,6 +21,10 @@
     return select.value;
   }
 
+  function getPeopleCount(items) {
+    return items.reduce((sum, item) => sum + Number(item.qty || 0), 0) || 1;
+  }
+
   function getUnitPrice(product) {
     if (!menuData || !menuData.size_engine || !menuData.size_engine.options) return Number(product.base_price_cents);
     const size = currentSize();
@@ -88,13 +92,51 @@
       return ['bevanda', 'cola', 'bibita', 'birra', 'acqua', 'dolce', 'tiramisu', 'dessert'].some((k) => name.includes(k));
     });
 
-    if (beverageOrDessert) return { id: beverageOrDessert.id, qty: 1 };
+    const peopleCount = getPeopleCount(primaryItems);
+    const suggestedQty = Math.max(1, Math.min(3, Math.ceil(peopleCount / 2)));
+
+    if (beverageOrDessert) return { id: beverageOrDessert.id, qty: suggestedQty, kind: 'beverage' };
 
     const premiumFallback = activeProducts
       .slice()
       .sort((a, b) => Number(b.base_price_cents || 0) - Number(a.base_price_cents || 0))[0];
 
-    return premiumFallback ? { id: premiumFallback.id, qty: 1 } : null;
+    return premiumFallback ? { id: premiumFallback.id, qty: 1, kind: 'premium' } : null;
+  }
+
+  function applyPostSuggestionConversionFlow(data) {
+    const peopleCount = getPeopleCount(data.items);
+
+    if (microConfirmEl) {
+      microConfirmEl.textContent = `Ottima scelta per ${peopleCount} ${peopleCount === 1 ? 'persona' : 'persone'}.`;
+    }
+
+    lastSecondarySuggestion = pickSecondarySuggestion(data.items);
+
+    if (secondarySuggestEl) {
+      if (lastSecondarySuggestion && lastSecondarySuggestion.kind === 'beverage') {
+        secondarySuggestEl.textContent = 'Vuoi aggiungere una bevanda per completare?';
+      } else if (lastSecondarySuggestion) {
+        secondarySuggestEl.textContent = 'Vuoi completare l’ordine con una proposta premium?';
+      } else {
+        secondarySuggestEl.textContent = '';
+      }
+    }
+
+    if (addSecondaryBtn) {
+      if (lastSecondarySuggestion && lastSecondarySuggestion.kind === 'beverage') {
+        addSecondaryBtn.textContent = `Aggiungi ${lastSecondarySuggestion.qty} bibite`;
+      } else if (lastSecondarySuggestion) {
+        addSecondaryBtn.textContent = 'Aggiungi suggerimento secondario';
+      } else {
+        addSecondaryBtn.textContent = 'Aggiungi suggerimento secondario';
+      }
+      addSecondaryBtn.disabled = !lastSecondarySuggestion;
+    }
+
+    if (ctaHintEl) {
+      ctaHintEl.textContent = 'Puoi procedere al pagamento in meno di 30 secondi.';
+    }
   }
 
   function renderSuggestion(data) {
@@ -108,24 +150,6 @@
     const lines = data.items.map((it) => `- ${names.get(it.id) || it.id} × ${it.qty}`).join('\n');
     resultEl.textContent = `Proposta:\n${lines}\n${data.note ? `\n${data.note}` : ''}`;
     addBtn.disabled = false;
-
-    const peopleCount = data.items.reduce((sum, item) => sum + Number(item.qty || 0), 0) || 1;
-    if (microConfirmEl) {
-      microConfirmEl.textContent = `Ottima scelta per ${peopleCount} ${peopleCount === 1 ? 'persona' : 'persone'}.`;
-    }
-
-    lastSecondarySuggestion = pickSecondarySuggestion(data.items);
-    if (secondarySuggestEl) {
-      if (lastSecondarySuggestion) {
-        const namesMap = new Map((menuData.menu || []).map((item) => [item.id, item.name]));
-        secondarySuggestEl.textContent = `Suggerimento secondario: aggiungi ${namesMap.get(lastSecondarySuggestion.id) || lastSecondarySuggestion.id} per aumentare il valore dell'ordine.`;
-      } else {
-        secondarySuggestEl.textContent = '';
-      }
-    }
-    if (addSecondaryBtn) {
-      addSecondaryBtn.disabled = !lastSecondarySuggestion;
-    }
   }
 
   quickActionButtons.forEach((button) => {
@@ -143,7 +167,10 @@
     lastSecondarySuggestion = null;
     if (microConfirmEl) microConfirmEl.textContent = '';
     if (secondarySuggestEl) secondarySuggestEl.textContent = '';
-    if (addSecondaryBtn) addSecondaryBtn.disabled = true;
+    if (addSecondaryBtn) {
+      addSecondaryBtn.disabled = true;
+      addSecondaryBtn.textContent = 'Aggiungi suggerimento secondario';
+    }
     if (ctaHintEl) ctaHintEl.textContent = '';
 
     if (!menuData) {
@@ -167,6 +194,7 @@
       const validated = validateSuggestion(payload);
       lastSuggestion = validated;
       renderSuggestion(validated);
+      applyPostSuggestionConversionFlow(validated);
     } catch (error) {
       console.error(error);
       resultEl.textContent = 'Errore tecnico temporaneo.';
@@ -189,7 +217,7 @@
   if (addSecondaryBtn) {
     addSecondaryBtn.addEventListener('click', function () {
       if (!lastSecondarySuggestion) return;
-      const added = addItemsToCart([lastSecondarySuggestion]);
+      const added = addItemsToCart([{ id: lastSecondarySuggestion.id, qty: lastSecondarySuggestion.qty }]);
       if (!added) return;
 
       if (ctaHintEl) {
