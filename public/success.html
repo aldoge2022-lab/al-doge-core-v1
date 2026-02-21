@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pagamento completato - AL DOGE</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <main class="container">
+    <h1 class="logo">Pagamento completato</h1>
+    <p>Grazie! Il tuo ordine è stato ricevuto.</p>
+    <a href="/" aria-label="Torna al menu">Torna al menu</a>
+  </main>
+  <script>
+    localStorage.removeItem('cart');
+    localStorage.removeItem('al_doge_cart_v1');
+    window.dispatchEvent(new Event('cart-updated'));
+  </script>
+</body>
+</html>

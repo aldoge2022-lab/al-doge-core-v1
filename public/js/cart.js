@@ -1,49 +1,129 @@
 (function () {
-  const STORAGE_KEY = 'al_doge_cart_v1';
+  const STORAGE_KEY = 'cart';
+  const LEGACY_STORAGE_KEY = 'al_doge_cart_v1';
+
+  function toSafeQuantity(value) {
+    return Math.max(1, Number(value) || 1);
+  }
+
+  function normalizeItem(item) {
+    const cents =
+      item && item.price_cents != null
+        ? Number(item.price_cents)
+        : Number(item && item.unit_price_cents);
+    return {
+      id: String(item && item.id ? item.id : ''),
+      name: String((item && item.name) || 'Prodotto'),
+      price_cents: Number.isFinite(cents) ? cents : 0,
+      quantity: toSafeQuantity(item && (item.quantity ?? item.qty))
+    };
+  }
+
+  function normalizeCart(items) {
+    const normalized = [];
+    (Array.isArray(items) ? items : []).forEach((entry) => {
+      const item = normalizeItem(entry);
+      if (!item.id || item.price_cents <= 0) return;
+      const existing = normalized.find((cartItem) => cartItem.id === item.id);
+      if (existing) {
+        existing.quantity += item.quantity;
+      } else {
+        normalized.push(item);
+      }
+    });
+    return normalized;
+  }
 
   function read() {
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (parsed && Array.isArray(parsed.items)) {
-        return parsed;
+      if (Array.isArray(parsed)) {
+        return normalizeCart(parsed);
       }
     } catch (_) {}
-    return { items: [] };
+    try {
+      const parsed = JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY));
+      if (parsed && Array.isArray(parsed.items)) {
+        return normalizeCart(parsed.items);
+      }
+    } catch (_) {}
+    return [];
   }
 
   function write(cart) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeCart(cart)));
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  }
+
+  function emitUpdated() {
+    window.dispatchEvent(new Event('cart-updated'));
   }
 
   const Cart = {
     getCart() {
       return read();
     },
-    addItem(item) {
+    addToCart(item) {
       const cart = read();
-      const existing = cart.items.find(
-        (entry) => entry.id === item.id && entry.size === item.size && entry.unit_price_cents === item.unit_price_cents
-      );
+      const normalizedItem = normalizeItem(item);
+      if (!normalizedItem.id || normalizedItem.price_cents <= 0) return cart;
+      const existing = cart.find((entry) => entry.id === normalizedItem.id);
 
       if (existing) {
         existing.quantity += 1;
       } else {
-        cart.items.push({
-          id: item.id,
-          name: item.name,
-          size: item.size,
-          unit_price_cents: item.unit_price_cents,
-          quantity: 1
-        });
+        cart.push(normalizedItem);
       }
 
       write(cart);
-      window.dispatchEvent(new Event('cart-updated'));
+      emitUpdated();
       return cart;
+    },
+    addItem(item) {
+      return this.addToCart(item);
+    },
+    decreaseQuantity(productId) {
+      const cart = read();
+      const index = cart.findIndex((entry) => entry.id === productId);
+      if (index === -1) return cart;
+      if (cart[index].quantity > 1) {
+        cart[index].quantity -= 1;
+      } else {
+        cart.splice(index, 1);
+      }
+      write(cart);
+      emitUpdated();
+      return cart;
+    },
+    removeFromCart(productId) {
+      const cart = read().filter((entry) => entry.id !== productId);
+      write(cart);
+      emitUpdated();
+      return cart;
+    },
+    calculateTotal() {
+      const cart = read();
+      const total = cart.reduce((sum, item) => sum + (item.price_cents * item.quantity), 0);
+      const badge = document.getElementById('cartBadge');
+      const barTotal = document.getElementById('cartBarTotal');
+      if (badge) badge.textContent = String(cart.reduce((sum, item) => sum + item.quantity, 0));
+      if (barTotal) barTotal.textContent = `€ ${(total / 100).toFixed(2)}`;
+      return total;
+    },
+    clearCart() {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      emitUpdated();
+      return [];
     }
   };
 
   window.Cart = Cart;
+  window.addToCart = (product) => Cart.addToCart(product);
+  window.decreaseQuantity = (productId) => Cart.decreaseQuantity(productId);
+  window.removeFromCart = (productId) => Cart.removeFromCart(productId);
+  window.calculateTotal = () => Cart.calculateTotal();
+  window.clearCart = () => Cart.clearCart();
 })();
 
 // =========================
@@ -54,6 +134,7 @@ function alDogeGetCartSafe() {
   try {
     if (window.Cart && typeof window.Cart.getCart === 'function') {
       const cartState = window.Cart.getCart();
+      if (Array.isArray(cartState)) return cartState;
       if (cartState && Array.isArray(cartState.items)) return cartState.items;
     }
   } catch (_) {}
@@ -80,20 +161,18 @@ function alDogeCalcCount(cart) {
 }
 
 function alDogeCalcTotal(cart) {
-  return cart.reduce((s, it) => {
-    const q = Number(it.quantity ?? it.qty ?? 1);
-    const price =
-      it.price != null
-        ? Number(it.price)
-        : (it.price_cents != null
-          ? Number(it.price_cents) / 100
-          : (it.unit_price_cents != null ? Number(it.unit_price_cents) / 100 : 0));
-    return s + (price * q);
+  return cart.reduce((sum, item) => {
+    const q = Number(item.quantity ?? item.qty ?? 1);
+    const priceCents =
+      item.price_cents != null
+        ? Number(item.price_cents)
+        : (item.unit_price_cents != null ? Number(item.unit_price_cents) : Math.round(Number(item.price || 0) * 100));
+    return sum + (priceCents * q);
   }, 0);
 }
 
 function alDogeFormatEUR(v) {
-  return `€ ${Number(v).toFixed(2)}`;
+  return `€ ${(Number(v) / 100).toFixed(2)}`;
 }
 
 
@@ -102,8 +181,7 @@ async function alDogeProceedToCheckout(cart) {
     ? cart.map((item) => ({
       id: item.id,
       quantity: Number(item.quantity ?? item.qty ?? 1),
-      size: item.size,
-      unit_price_cents: Number(item.unit_price_cents ?? item.price_cents ?? 0),
+      unit_price_cents: Number(item.price_cents ?? item.unit_price_cents ?? 0),
       name: item.name
     }))
     : [];
@@ -165,13 +243,11 @@ function alDogeRenderCartDrawer() {
   cart.forEach((it) => {
     const name = it.name ?? it.title ?? 'Prodotto';
     const q = Number(it.quantity ?? it.qty ?? 1);
-    const price =
-      it.price != null
-        ? Number(it.price)
-        : (it.price_cents != null
-          ? Number(it.price_cents) / 100
-          : (it.unit_price_cents != null ? Number(it.unit_price_cents) / 100 : 0));
-    const line = price * q;
+    const priceCents =
+      it.price_cents != null
+        ? Number(it.price_cents)
+        : (it.unit_price_cents != null ? Number(it.unit_price_cents) : Math.round(Number(it.price || 0) * 100));
+    const line = priceCents * q;
 
     const metaParts = [];
     if (it.size) metaParts.push(String(it.size));
@@ -196,7 +272,38 @@ function alDogeRenderCartDrawer() {
 
     const right = document.createElement('div');
     right.className = 'cart-item-right';
-    right.textContent = alDogeFormatEUR(line);
+    const linePrice = document.createElement('div');
+    linePrice.textContent = alDogeFormatEUR(line);
+    right.appendChild(linePrice);
+
+    const actions = document.createElement('div');
+    actions.className = 'cart-item-actions';
+
+    const decreaseBtn = document.createElement('button');
+    decreaseBtn.type = 'button';
+    decreaseBtn.className = 'cart-item-action-btn';
+    decreaseBtn.textContent = '−';
+    decreaseBtn.setAttribute('aria-label', `Riduci quantità ${name}`);
+    decreaseBtn.addEventListener('click', () => {
+      if (window.Cart && typeof window.Cart.decreaseQuantity === 'function') {
+        window.Cart.decreaseQuantity(it.id);
+      }
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'cart-item-action-btn';
+    removeBtn.textContent = 'Rimuovi';
+    removeBtn.setAttribute('aria-label', `Rimuovi ${name}`);
+    removeBtn.addEventListener('click', () => {
+      if (window.Cart && typeof window.Cart.removeFromCart === 'function') {
+        window.Cart.removeFromCart(it.id);
+      }
+    });
+
+    actions.appendChild(decreaseBtn);
+    actions.appendChild(removeBtn);
+    right.appendChild(actions);
 
     row.appendChild(left);
     row.appendChild(right);
@@ -265,6 +372,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btn2) btn2.addEventListener('click', goCheckout);
 
   window.addEventListener('cart-updated', () => {
+    if (window.Cart && typeof window.Cart.calculateTotal === 'function') {
+      window.Cart.calculateTotal();
+    }
     alDogeRenderCartDrawer();
   });
 });
