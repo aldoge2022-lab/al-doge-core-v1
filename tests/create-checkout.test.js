@@ -99,6 +99,7 @@ test('create-checkout calculates totals only from catalog', async () => {
   assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 1050);
   assert.equal(checkoutCalls[0].line_items[0].quantity, 2);
   assert.equal(checkoutCalls[0].metadata.order_id, 'ord_1');
+  assert.equal(checkoutCalls[0].metadata.table, 'asporto');
   assert.equal(checkoutCalls[0].metadata.table_number, undefined);
   assert.equal(insertedOrders[0][0].type, 'takeaway');
   assert.equal(insertedOrders[0][0].table_number, null);
@@ -137,6 +138,7 @@ test('create-checkout sets table mode and metadata when table_number query param
   assert.equal(insertedOrders[0][0].type, 'table');
   assert.equal(insertedOrders[0][0].table_number, 'A12');
   assert.equal(checkoutCalls[0].metadata.order_id, 'ord_1');
+  assert.equal(checkoutCalls[0].metadata.table, 'A12');
   assert.equal(checkoutCalls[0].metadata.table_number, 'A12');
 });
 
@@ -153,6 +155,23 @@ test('create-checkout sets table mode when table_number is present in request bo
   assert.equal(insertedOrders[0][0].type, 'table');
   assert.equal(insertedOrders[0][0].table_number, '5');
   assert.equal(checkoutCalls[0].metadata.table_number, '5');
+  assert.equal(checkoutCalls[0].metadata.table, '5');
+});
+
+test('create-checkout accepts table in request body', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      table: '7',
+      cart: [{ type: 'drink', id: 'birra-05', quantity: 1 }]
+    })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(insertedOrders[0][0].type, 'table');
+  assert.equal(insertedOrders[0][0].table_number, '7');
+  assert.equal(checkoutCalls[0].metadata.table_number, '7');
+  assert.equal(checkoutCalls[0].metadata.table, '7');
 });
 
 test('create-checkout supports split amount override and records split payment', async () => {

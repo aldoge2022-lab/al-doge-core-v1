@@ -32,7 +32,7 @@ exports.handler = async function (event) {
     const orderValue = amount_paid_cents / 100;
     const email = session.customer_details?.email || "Non fornita";
     const order_id = session.metadata?.order_id;
-    const table_number = session.metadata?.table_number;
+    const table_number = session.metadata?.table_number || (session.metadata?.table && session.metadata.table !== "asporto" ? session.metadata.table : undefined);
     const payment_mode = session.metadata?.payment_mode;
 
     if (order_id && amount_paid_cents > 0) {
@@ -112,7 +112,9 @@ exports.handler = async function (event) {
             text: `
 ✅ ORDINE PAGATO – AL DOGE
 
+🍽️ ${table_number ? `TAVOLO ${table_number}` : "ASPORTO"}
 💰 Totale: €${orderValue}
+💳 Pagamento: ${(payment_mode || "full").toUpperCase()}
 📧 Email: ${email}
 🕒 ${new Date().toLocaleString("it-IT")}
 

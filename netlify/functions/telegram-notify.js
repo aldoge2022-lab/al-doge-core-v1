@@ -11,7 +11,22 @@ exports.handler = async function (event) {
 
   try {
     const body = JSON.parse(event.body || "{}");
-    const text = String(body.message || "").trim();
+    const itemsList = String(body.itemsList || "").trim();
+    const total = Number(body.total);
+    const order = body.order && typeof body.order === "object" ? body.order : null;
+    const text = String(
+      body.message
+      || (order
+        ? `
+🍕 NUOVO ORDINE ${order.table ? "TAVOLO " + order.table : "ASPORTO"}
+
+${itemsList}
+
+Pagamento: ${String(order.payment_mode || "full").toUpperCase()}
+Totale: €${Number.isFinite(total) ? total.toFixed(2) : "0.00"}
+`.trim()
+        : "")
+    ).trim();
     if (!text || text.length > MAX_MESSAGE_LENGTH) {
       return { statusCode: 400, body: "Invalid input" };
     }
