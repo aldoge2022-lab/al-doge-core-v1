@@ -81,3 +81,20 @@ test('creates checkout session and telegram notification for valid order', async
   assert.equal(checkoutCalls.length, 1);
   assert.equal(telegramCalls.length, 1);
 });
+
+test('creates checkout session from cart items payload', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      items: [
+        { id: 'margherita', quantity: 2, unit_price_cents: 600, name: 'Margherita' }
+      ]
+    })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).url, 'https://checkout.example/session');
+  assert.equal(checkoutCalls.length, 1);
+  assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 600);
+  assert.equal(checkoutCalls[0].line_items[0].quantity, 2);
+});
