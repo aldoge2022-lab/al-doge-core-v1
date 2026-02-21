@@ -10,12 +10,13 @@ let ordersInsertError = null;
 let orderItemsInsertError = null;
 let insertedOrders = [];
 let insertedOrderItems = [];
+let insertedPayments = [];
 const stripeMock = () => ({
   checkout: {
     sessions: {
       create: async (payload) => {
         checkoutCalls.push(payload);
-        return { url: 'https://checkout.example/session' };
+        return { id: 'cs_test_1', url: 'https://checkout.example/session' };
       }
     }
   }
@@ -29,7 +30,10 @@ const supabaseMock = {
             single: async () => {
               insertedOrders.push(rows);
               if (ordersInsertError) return { data: null, error: ordersInsertError };
-              return { data: { id: 'ord_1' }, error: null };
+              return {
+                data: { id: 'ord_1', total_cents: rows[0].total_cents, paid_cents: rows[0].paid_cents },
+                error: null
+              };
             }
           })
         })
@@ -40,6 +44,14 @@ const supabaseMock = {
         insert: async (rows) => {
           insertedOrderItems.push(rows);
           if (orderItemsInsertError) return { error: orderItemsInsertError };
+          return { error: null };
+        }
+      };
+    }
+    if (table === 'payments') {
+      return {
+        insert: async (rows) => {
+          insertedPayments.push(rows);
           return { error: null };
         }
       };
@@ -63,6 +75,7 @@ test.beforeEach(() => {
   orderItemsInsertError = null;
   insertedOrders = [];
   insertedOrderItems = [];
+  insertedPayments = [];
 });
 
 test('create-checkout rejects non-POST', async () => {
@@ -125,6 +138,59 @@ test('create-checkout sets table mode and metadata when table_number query param
   assert.equal(insertedOrders[0][0].table_number, 'A12');
   assert.equal(checkoutCalls[0].metadata.order_id, 'ord_1');
   assert.equal(checkoutCalls[0].metadata.table_number, 'A12');
+});
+
+test('create-checkout sets table mode when table_number is present in request body', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      table_number: '5',
+      cart: [{ type: 'drink', id: 'birra-05', quantity: 1 }]
+    })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(insertedOrders[0][0].type, 'table');
+  assert.equal(insertedOrders[0][0].table_number, '5');
+  assert.equal(checkoutCalls[0].metadata.table_number, '5');
+});
+
+test('create-checkout supports split amount override and records split payment', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      table_number: '5',
+      split_mode: true,
+      split_persons: 4,
+      amount_override_cents: 1500,
+      cart: [{ type: 'drink', id: 'birra-05', quantity: 3 }]
+    })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(checkoutCalls[0].line_items.length, 1);
+  assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 1500);
+  assert.equal(checkoutCalls[0].metadata.payment_mode, 'split');
+  assert.equal(checkoutCalls[0].metadata.split_persons, '4');
+  assert.equal(insertedOrders[0][0].total_cents, 1500);
+  assert.equal(insertedPayments[0][0].payment_mode, 'split');
+  assert.equal(insertedPayments[0][0].amount_cents, 1500);
+});
+
+test('create-checkout blocks split overpay', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      table_number: '5',
+      split_mode: true,
+      split_persons: 2,
+      amount_override_cents: 5000,
+      cart: [{ type: 'drink', id: 'birra-05', quantity: 2 }]
+    })
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(checkoutCalls.length, 0);
 });
 
 test('create-checkout blocks Stripe session when DB insert fails', async () => {

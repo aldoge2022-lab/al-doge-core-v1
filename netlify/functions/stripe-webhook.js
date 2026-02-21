@@ -28,40 +28,76 @@ exports.handler = async function (event) {
     if (session.amount_total === null || session.amount_total === undefined) {
       console.error("amount_total mancante nella sessione Stripe:", session.id);
     }
-    const total_cents = Number(session.amount_total) || 0;
-    const orderValue = total_cents / 100;
+    const amount_paid_cents = Number(session.amount_total) || 0;
+    const orderValue = amount_paid_cents / 100;
     const email = session.customer_details?.email || "Non fornita";
     const order_id = session.metadata?.order_id;
     const table_number = session.metadata?.table_number;
+    const payment_mode = session.metadata?.payment_mode;
 
-    if (order_id && total_cents > 0) {
-      let orderUpdate = supabase
-        .from("orders")
-        .update({
-          status: "paid",
-          paid_cents: total_cents
-        })
-        .eq("id", order_id);
+    if (order_id && amount_paid_cents > 0) {
+      if (payment_mode === "split") {
+        let orderQuery = supabase
+          .from("orders")
+          .select("total_cents, paid_cents")
+          .eq("id", order_id);
 
-      if (table_number) {
-        orderUpdate = orderUpdate.eq("type", "table").eq("table_number", table_number);
-      }
+        if (table_number) {
+          orderQuery = orderQuery.eq("type", "table").eq("table_number", table_number);
+        }
 
-      const { error: orderError } = await orderUpdate;
-
-      if (orderError) {
-        console.error("Errore aggiornamento ordine:", orderError.message);
-      } else {
-        const { error: paymentError } = await supabase.from("payments").insert([
-          {
-            order_id,
-            amount_cents: total_cents,
-            payment_mode: "full",
-            stripe_session_id: session.id
+        const { data: order, error: orderReadError } = await orderQuery.single();
+        if (orderReadError || !order) {
+          console.error("Errore lettura ordine split:", orderReadError?.message || "ORDER_NOT_FOUND");
+        } else {
+          const order_total_cents = Number(order.total_cents);
+          if (!Number.isInteger(order_total_cents) || order_total_cents < 1) {
+            console.error("Totale ordine non valido in modalità split:", order_id);
+            return { statusCode: 500, body: "Order total invalid" };
           }
-        ]);
-        if (paymentError) {
-          console.error("Errore inserimento pagamento:", paymentError.message);
+          const updated_paid_cents = (Number(order.paid_cents) || 0) + amount_paid_cents;
+          const status = updated_paid_cents >= order_total_cents ? "paid" : "partial";
+          let orderUpdate = supabase
+            .from("orders")
+            .update({ paid_cents: updated_paid_cents, status })
+            .eq("id", order_id);
+          if (table_number) {
+            orderUpdate = orderUpdate.eq("type", "table").eq("table_number", table_number);
+          }
+          const { error: orderError } = await orderUpdate;
+          if (orderError) {
+            console.error("Errore aggiornamento ordine split:", orderError.message);
+          }
+        }
+      } else {
+        let orderUpdate = supabase
+          .from("orders")
+          .update({
+            status: "paid",
+            paid_cents: amount_paid_cents
+          })
+          .eq("id", order_id);
+
+        if (table_number) {
+          orderUpdate = orderUpdate.eq("type", "table").eq("table_number", table_number);
+        }
+
+        const { error: orderError } = await orderUpdate;
+
+        if (orderError) {
+          console.error("Errore aggiornamento ordine:", orderError.message);
+        } else {
+          const { error: paymentError } = await supabase.from("payments").insert([
+            {
+              order_id,
+              amount_cents: amount_paid_cents,
+              payment_mode: "full",
+              stripe_session_id: session.id
+            }
+          ]);
+          if (paymentError) {
+            console.error("Errore inserimento pagamento:", paymentError.message);
+          }
         }
       }
     }
