@@ -16,6 +16,18 @@
     return basePriceCents + currentSurcharge();
   }
 
+  function updateCartIndicator() {
+    const indicator = document.getElementById('cart-indicator');
+    if (!indicator || !window.Cart) {
+      return;
+    }
+
+    const cart = Cart.getCart();
+    const items = cart && Array.isArray(cart.items) ? cart.items : [];
+    const itemCount = items.reduce((total, item) => total + item.quantity, 0);
+    indicator.textContent = 'Carrello: ' + itemCount;
+  }
+
   function renderMenu() {
     const menuContainer = document.getElementById('menu');
     const totalSurcharge = currentSurcharge();
@@ -67,6 +79,7 @@
           size: state.size,
           unit_price_cents: finalPrice(product.base_price_cents)
         });
+        updateCartIndicator();
       };
     });
   }
@@ -78,6 +91,7 @@
       state.size = data.size_engine.default;
       renderSizeSelector();
       renderMenu();
+      updateCartIndicator();
     })
     .catch(function (error) {
       console.error(error);
