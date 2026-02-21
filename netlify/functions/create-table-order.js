@@ -11,7 +11,7 @@ exports.handler = async (event) => {
   try {
     const { table_id, items, total_cents, payment_mode } = JSON.parse(event.body || '{}');
 
-    if (!table_id || !items || !total_cents) {
+    if (!table_id || !Array.isArray(items) || !items.length || !total_cents || !payment_mode) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Missing required fields' })
@@ -20,7 +20,7 @@ exports.handler = async (event) => {
 
     const { data: existingTable, error: tableError } = await supabase
       .from('restaurant_tables')
-      .select('*')
+      .select('id')
       .eq('id', table_id)
       .single();
 
