@@ -183,7 +183,7 @@
   }
 
   document.addEventListener('click', async function (e) {
-    if (!e.target || e.target.id !== 'aiSuggestBtn') return;
+    if (e.target.id !== 'aiSuggestBtn') return;
     await handleSuggestClick();
   });
 
