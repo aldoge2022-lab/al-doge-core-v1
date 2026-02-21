@@ -28,11 +28,11 @@ test.beforeEach(() => {
       return { choices: [{ message: { content: 'Nota commerciale breve' } }] };
     }
   });
-  process.env.OPENAI_API_KEY = 'test-key';
+  process.env.XAI_API_KEY = 'test-key';
 });
 
 test.after(() => {
-  delete process.env.OPENAI_API_KEY;
+  delete process.env.XAI_API_KEY;
   delete require.cache[aiSuggestPath];
   global.fetch = originalFetch;
 });
@@ -52,7 +52,7 @@ test('ai-suggest returns 400 when message is missing', async () => {
   assert.equal(JSON.parse(response.body).error, 'INVALID_INPUT');
 });
 
-test('ai-suggest returns deterministic items and OpenAI commercial note', async () => {
+test('ai-suggest returns deterministic items and xAI commercial note', async () => {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ message: 'Siamo in 4, vogliamo una pizza piccante' })
@@ -68,10 +68,10 @@ test('ai-suggest returns deterministic items and OpenAI commercial note', async 
   assert.equal(body.secondarySuggestion.item.id, 'birra-05');
   assert.equal(body.secondarySuggestion.item.qty, 2);
   assert.equal(fetchState.calls.length, 1);
-  assert.equal(fetchState.calls[0].url, 'https://api.openai.com/v1/chat/completions');
+  assert.equal(fetchState.calls[0].url, 'https://api.x.ai/v1/chat/completions');
 });
 
-test('ai-suggest keeps deterministic payload when OpenAI call fails', async () => {
+test('ai-suggest keeps deterministic payload when xAI call fails', async () => {
   fetchState.impl = async () => {
     throw new Error('Boom');
   };
@@ -83,5 +83,5 @@ test('ai-suggest keeps deterministic payload when OpenAI call fails', async () =
   const body = JSON.parse(response.body);
   assert.equal(body.items.length <= 3, true);
   assert.equal(body.items[0].qty, 5);
-  assert.equal(body.note, '');
+  assert.equal(body.note, 'Scelta equilibrata perfetta per il tavolo. Aggiungi una bibita e chiudi l\'ordine ora.');
 });
