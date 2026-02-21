@@ -344,3 +344,45 @@ button:hover {
   color: #c9a96e;
   font-weight: 700;
 }
+
+.hero-proof {
+  margin: 12px 0 6px;
+  color: #f1dcb3;
+  font-weight: 700;
+}
+
+.hero-promise {
+  margin: 0 0 16px;
+  color: var(--text-light);
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.hero-cta-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hero-cta-primary,
+.hero-cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  border-radius: 10px;
+  padding: 12px 20px;
+  font-weight: 800;
+}
+
+.hero-cta-primary {
+  background: var(--gold);
+  color: #111;
+}
+
+.hero-cta-secondary {
+  border: 1px solid rgba(255,255,255,0.28);
+  color: var(--text-light);
+  background: transparent;
+}
