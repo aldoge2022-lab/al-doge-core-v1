@@ -25,6 +25,9 @@ exports.handler = async function (event) {
 
   if (stripeEvent.type === "checkout.session.completed") {
     const session = stripeEvent.data.object;
+    if (session.amount_total === null || session.amount_total === undefined) {
+      console.error("amount_total mancante nella sessione Stripe:", session.id);
+    }
     const total_cents = Number(session.amount_total) || 0;
     const orderValue = total_cents / 100;
     const email = session.customer_details?.email || "Non fornita";

@@ -9,6 +9,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const MAX_ITEMS = 30;
 const MAX_QTY = 20;
+const MIN_PAYMENT_CENTS = 1;
 
 function invalid() {
   return { statusCode: 400, body: 'Invalid input' };
@@ -116,7 +117,7 @@ exports.handler = async function (event) {
 
     if (!line_items.length) return invalid();
     const total_cents = line_items.reduce((sum, item) => sum + (item.price_data.unit_amount * item.quantity), 0);
-    if (!total_cents || total_cents < 1) return invalid();
+    if (total_cents < MIN_PAYMENT_CENTS) return invalid();
 
     const { data: order, error: orderError } = await supabase
       .from('orders')
@@ -130,12 +131,18 @@ exports.handler = async function (event) {
       ])
       .select()
       .single();
-    if (orderError || !order) return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
+    if (orderError || !order) {
+      console.error('Errore creazione ordine:', orderError?.message || 'ORDER_NOT_CREATED');
+      return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
+    }
 
     const { error: itemsError } = await supabase
       .from('order_items')
       .insert(orderItems.map((item) => ({ ...item, order_id: order.id })));
-    if (itemsError) return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
+    if (itemsError) {
+      console.error('Errore creazione righe ordine:', itemsError.message);
+      return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
+    }
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],

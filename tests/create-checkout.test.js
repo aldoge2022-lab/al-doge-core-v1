@@ -80,6 +80,9 @@ test('create-checkout calculates totals only from catalog', async () => {
 
   assert.equal(response.statusCode, 200);
   assert.equal(checkoutCalls.length, 1);
+  assert.equal(checkoutCalls[0].payment_method_types[0], 'card');
+  assert.equal(checkoutCalls[0].success_url, 'https://example.com/success.html');
+  assert.equal(checkoutCalls[0].cancel_url, 'https://example.com/cancel.html');
   assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 1050);
   assert.equal(checkoutCalls[0].line_items[0].quantity, 2);
   assert.equal(checkoutCalls[0].metadata.order_id, 'ord_1');
@@ -106,6 +109,19 @@ test('create-checkout adds cover charge for sala service', async () => {
 
 test('create-checkout blocks Stripe session when DB insert fails', async () => {
   ordersInsertError = new Error('db down');
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      cart: [{ type: 'drink', id: 'birra-05', quantity: 1 }]
+    })
+  });
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(checkoutCalls.length, 0);
+});
+
+test('create-checkout blocks Stripe session when order_items insert fails', async () => {
+  orderItemsInsertError = new Error('db down');
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({
