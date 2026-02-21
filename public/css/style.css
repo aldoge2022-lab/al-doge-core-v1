@@ -294,16 +294,16 @@ button:hover {
   white-space: nowrap;
 }
 
-.cart-item-actions{
-  display:flex;
-  justify-content:flex-end;
-  gap:6px;
-  margin-top:6px;
+.cart-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
 }
 
-.cart-item-action-btn{
-  padding:4px 8px;
-  font-size:12px;
+.cart-item-action-btn {
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 .cart-drawer-footer{
