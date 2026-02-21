@@ -29,10 +29,12 @@ test.beforeEach(() => {
     }
   });
   process.env.XAI_API_KEY = 'test-key';
+  delete process.env.XAI_MODEL;
 });
 
 test.after(() => {
   delete process.env.XAI_API_KEY;
+  delete process.env.XAI_MODEL;
   delete require.cache[aiSuggestPath];
   global.fetch = originalFetch;
 });
@@ -69,6 +71,19 @@ test('ai-suggest returns deterministic items and xAI commercial note', async () 
   assert.equal(body.secondarySuggestion.item.qty, 2);
   assert.equal(fetchState.calls.length, 1);
   assert.equal(fetchState.calls[0].url, 'https://api.x.ai/v1/chat/completions');
+  assert.equal(JSON.parse(fetchState.calls[0].options.body).model, 'grok-4-1-fast-reasoning');
+});
+
+test('ai-suggest uses XAI_MODEL env override for xAI requests', async () => {
+  process.env.XAI_MODEL = 'grok-custom-model';
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Una margherita per 2 persone' })
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(fetchState.calls.length, 1);
+  assert.equal(JSON.parse(fetchState.calls[0].options.body).model, 'grok-custom-model');
+  delete process.env.XAI_MODEL;
 });
 
 test('ai-suggest keeps deterministic payload when xAI call fails', async () => {

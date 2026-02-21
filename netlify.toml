@@ -2,6 +2,9 @@
   publish = "public"
   functions = "netlify/functions"
 
+[build.environment]
+  XAI_MODEL = "grok-4-1-fast-reasoning"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"

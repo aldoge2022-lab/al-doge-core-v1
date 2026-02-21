@@ -77,6 +77,8 @@ async function generateCommercialNote(prompt) {
     return null;
   }
 
+  const model = process.env.XAI_MODEL || 'grok-4-1-fast-reasoning';
+
   try {
     const response = await fetch('https://api.x.ai/v1/chat/completions', {
       method: 'POST',
@@ -85,7 +87,7 @@ async function generateCommercialNote(prompt) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'grok-2-latest',
+        model,
         messages: [
           {
             role: 'system',
