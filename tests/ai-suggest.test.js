@@ -67,6 +67,10 @@ test('ai-suggest returns OpenAI reply payload on success', async () => {
   assert.equal(openaiState.calls.length, 1);
   assert.equal(openaiState.calls[0].config.apiKey, 'test-key');
   assert.equal(openaiState.calls[0].payload.model, 'gpt-5-2-mini');
+  assert.match(openaiState.calls[0].payload.input, /Pizza Margherita/);
+  assert.match(openaiState.calls[0].payload.input, /Pizza Diavola/);
+  assert.match(openaiState.calls[0].payload.input, /massimo 3 pizze/i);
+  assert.match(openaiState.calls[0].payload.input, /massimo 4 righe/i);
 });
 
 test('ai-suggest returns 500 on runtime errors', async () => {
