@@ -16,6 +16,7 @@
   }
 
   function getUnitPrice(product) {
+    if (!menuData || !menuData.size_engine || !menuData.size_engine.options) return Number(product.base_price_cents);
     const size = currentSize();
     const surcharge = menuData.size_engine.options[size]
       ? menuData.size_engine.options[size].surcharge_cents
@@ -49,7 +50,8 @@
       return;
     }
 
-    const lines = data.items.map((it) => `- ${it.id} × ${it.qty}`).join('\n');
+    const names = new Map((menuData.menu || []).map((item) => [item.id, item.name]));
+    const lines = data.items.map((it) => `- ${names.get(it.id) || it.id} × ${it.qty}`).join('\n');
     resultEl.textContent = `Proposta:\n${lines}\n${data.note ? `\n${data.note}` : ''}`;
     addBtn.disabled = false;
   }
@@ -59,6 +61,11 @@
     addBtn.disabled = true;
     resultEl.textContent = 'Generazione in corso...';
     lastSuggestion = null;
+
+    if (!menuData) {
+      resultEl.textContent = 'Menu non disponibile.';
+      return;
+    }
 
     try {
       const response = await fetch('/.netlify/functions/ai-suggest', {
@@ -83,7 +90,11 @@
   });
 
   addBtn.addEventListener('click', function () {
-    if (!lastSuggestion || !lastSuggestion.items.length || !window.Cart || typeof window.Cart.addItem !== 'function') {
+    if (!lastSuggestion || !lastSuggestion.items.length) {
+      return;
+    }
+    if (!menuData || !window.Cart || typeof window.Cart.addItem !== 'function') {
+      resultEl.textContent = 'Carrello non disponibile.';
       return;
     }
 

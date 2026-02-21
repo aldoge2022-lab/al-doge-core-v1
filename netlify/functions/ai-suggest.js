@@ -8,7 +8,9 @@ function getCorsHeaders() {
   if (process.env.SITE_URL) {
     try {
       allowedOrigin = new URL(process.env.SITE_URL).origin;
-    } catch (_) {}
+    } catch (_) {
+      // fallback to "*" when SITE_URL is invalid
+    }
   }
 
   return {
@@ -41,8 +43,10 @@ function parseFromMessage(message, activeProducts) {
     if (!lower.includes(id) && !(name && lower.includes(name))) return;
 
     const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const qtyMatch = lower.match(new RegExp(`(\\d+)\\s*(x)?\\s*${escaped}`));
-    items.push({ id: product.id, qty: clampQty(qtyMatch ? qtyMatch[1] : 1) });
+    const qtyBefore = lower.match(new RegExp(`(\\d+)\\s*(x)?\\s*${escaped}`));
+    const qtyAfter = lower.match(new RegExp(`${escaped}\\s*(x)?\\s*(\\d+)`));
+    const qty = qtyBefore ? qtyBefore[1] : (qtyAfter ? qtyAfter[2] : 1);
+    items.push({ id: product.id, qty: clampQty(qty) });
   });
 
   return items;
@@ -68,7 +72,9 @@ exports.handler = async function (event) {
     }
 
     const menuData = loadMenuData();
-    const activeProducts = (menuData.menu || []).filter((item) => item && item.active && item.id);
+    const activeProducts = (menuData.menu || []).filter(
+      (item) => item && item.active && item.id && /^[a-z0-9-]+$/i.test(String(item.id))
+    );
     const activeIds = new Set(activeProducts.map((item) => item.id));
 
     let items = parseFromMessage(message, activeProducts);
