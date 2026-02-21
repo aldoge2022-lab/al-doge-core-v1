@@ -141,8 +141,11 @@
 
   window.addEventListener('product-added', updateDrinkSuggestionBox);
 
-  suggestBtn.addEventListener('click', async function () {
-    const message = promptEl.value.trim();
+  async function handleSuggestClick() {
+    const currentPromptEl = document.getElementById('aiPrompt');
+    if (!currentPromptEl) return;
+
+    const message = currentPromptEl.value.trim();
     addBtn.disabled = true;
     resultEl.textContent = 'Generazione in corso...';
     lastSuggestion = null;
@@ -177,6 +180,11 @@
       console.error(error);
       resultEl.textContent = 'Errore tecnico temporaneo.';
     }
+  }
+
+  document.addEventListener('click', async function (e) {
+    if (!e.target || e.target.id !== 'aiSuggestBtn') return;
+    await handleSuggestClick();
   });
 
   addBtn.addEventListener('click', function () {
