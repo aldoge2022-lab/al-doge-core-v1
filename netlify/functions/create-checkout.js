@@ -21,6 +21,13 @@ function toQty(value) {
   return qty;
 }
 
+function normalizeTableNumber(value) {
+  const tableNumber = String(value || '').trim();
+  if (!tableNumber) return null;
+  if (!/^[A-Za-z0-9_-]{1,20}$/.test(tableNumber)) return null;
+  return tableNumber;
+}
+
 function pizzaUnitAmount(item, pizzasById) {
   const pizza = pizzasById.get(item.id);
   if (!pizza) return null;
@@ -43,6 +50,7 @@ exports.handler = async function (event) {
   }
 
   try {
+    const table_number = normalizeTableNumber(event.queryStringParameters?.table_number);
     const body = JSON.parse(event.body || '{}');
     const cart = Array.isArray(body.cart) ? body.cart : null;
     if (!cart || !cart.length || cart.length > MAX_ITEMS) return invalid();
@@ -123,7 +131,8 @@ exports.handler = async function (event) {
       .from('orders')
       .insert([
         {
-          type: 'takeaway',
+          type: table_number ? 'table' : 'takeaway',
+          table_number,
           total_cents,
           paid_cents: 0,
           status: 'open'
@@ -148,7 +157,10 @@ exports.handler = async function (event) {
       payment_method_types: ['card'],
       line_items,
       mode: 'payment',
-      metadata: { order_id: String(order.id) },
+      metadata: {
+        order_id: String(order.id),
+        ...(table_number ? { table_number } : {})
+      },
       success_url: `${process.env.SITE_URL}/success.html`,
       cancel_url: `${process.env.SITE_URL}/cancel.html`
     });

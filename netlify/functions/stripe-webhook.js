@@ -32,15 +32,22 @@ exports.handler = async function (event) {
     const orderValue = total_cents / 100;
     const email = session.customer_details?.email || "Non fornita";
     const order_id = session.metadata?.order_id;
+    const table_number = session.metadata?.table_number;
 
     if (order_id && total_cents > 0) {
-      const { error: orderError } = await supabase
+      let orderUpdate = supabase
         .from("orders")
         .update({
           status: "paid",
           paid_cents: total_cents
         })
         .eq("id", order_id);
+
+      if (table_number) {
+        orderUpdate = orderUpdate.eq("type", "table").eq("table_number", table_number);
+      }
+
+      const { error: orderError } = await orderUpdate;
 
       if (orderError) {
         console.error("Errore aggiornamento ordine:", orderError.message);
