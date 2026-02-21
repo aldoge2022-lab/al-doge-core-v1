@@ -126,7 +126,7 @@ exports.handler = async (event) => {
     const secondarySuggestion = chooseDrinkUpsell(message, people);
     const itemText = items.map((item) => `${item.id} x${item.qty}`).join(', ');
     const upsellText = secondarySuggestion ? `${secondarySuggestion.item.id} x${secondarySuggestion.item.qty}` : 'nessuna bevanda';
-    const prompt = `Scrivi una nota commerciale breve in italiano (max 18 parole) per questa proposta pizzeria. Cliente: "${String(message)}". Proposta: ${itemText}. Upsell bevanda: ${upsellText}.`;
+    const prompt = `Scrivi una nota commerciale breve in italiano per questa proposta pizzeria. Cliente: "${String(message)}". Proposta: ${itemText}. Upsell bevanda: ${upsellText}.`;
     const aiNote = await generateCommercialNote(prompt);
     const finalNote = aiNote
       || 'Scelta equilibrata perfetta per il tavolo. Aggiungi una bibita e chiudi l\'ordine ora.';
