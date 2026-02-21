@@ -140,6 +140,19 @@ test('ai-suggest does not force upsell on explicit multi-person order intent', a
   assert.equal(parsed.items[0].qty, 3);
 });
 
+
+test('ai-suggest handles plain "test" as normal input (no debug shortcut)', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'test' }),
+    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
+  });
+
+  assert.equal(response.statusCode, 200);
+  const parsed = JSON.parse(response.body);
+  assert.ok(parsed.items.length >= 1);
+});
+
 test('ai-suggest returns 500 with code when menu fetch fails', async () => {
   mockMenuFetch({}, 503);
 
