@@ -17,13 +17,26 @@ const menuFixture = {
 };
 
 function mockMenuFetch(payload = menuFixture, status = 200) {
-  global.fetch = async () => ({
+  const fn = async () => ({
     ok: status >= 200 && status < 300,
     status,
     async json() {
       return payload;
     }
   });
+  fn.calls = 0;
+  const wrapped = async (...args) => {
+    fn.calls += 1;
+    return fn(...args);
+  };
+  wrapped.calls = fn.calls;
+  Object.defineProperty(wrapped, 'calls', {
+    get() {
+      return fn.calls;
+    }
+  });
+  global.fetch = wrapped;
+  return wrapped;
 }
 
 test.beforeEach(() => {
@@ -44,11 +57,13 @@ test('ai-suggest returns 400 for empty message', async () => {
   });
 
   assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).code, 'INVALID_INPUT');
 });
 
 test('ai-suggest returns 405 for non-POST requests', async () => {
   const response = await handler({ httpMethod: 'GET' });
   assert.equal(response.statusCode, 405);
+  assert.equal(JSON.parse(response.body).code, 'METHOD_NOT_ALLOWED');
 });
 
 test('ai-suggest returns 400 for too long message', async () => {
@@ -58,6 +73,7 @@ test('ai-suggest returns 400 for too long message', async () => {
   });
 
   assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).code, 'INVALID_INPUT');
 });
 
 test('ai-suggest returns items array for valid message', async () => {
@@ -72,12 +88,13 @@ test('ai-suggest returns items array for valid message', async () => {
   assert.ok(Array.isArray(parsed.items));
   assert.equal(parsed.items[0].id, 'margherita');
   assert.equal(parsed.items[0].qty, 2);
+  assert.match(parsed.note, /Proposta per/i);
 });
 
 test('ai-suggest falls back to first active item when no menu match is found', async () => {
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ message: 'Proposta leggera', people: 3 }),
+    body: JSON.stringify({ message: 'siamo in 3, proposta leggera' }),
     headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
   });
 
@@ -92,7 +109,7 @@ test('ai-suggest returns 500 with code when menu fetch fails', async () => {
 
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ message: 'test' }),
+    body: JSON.stringify({ message: 'Vorrei una proposta' }),
     headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
   });
 
@@ -100,4 +117,19 @@ test('ai-suggest returns 500 with code when menu fetch fails', async () => {
   const parsed = JSON.parse(response.body);
   assert.equal(parsed.code, 'MENU_FETCH_FAILED');
   assert.deepEqual(parsed.items, []);
+});
+
+test('ai-suggest handles required spicy message without 500', async () => {
+  const fetchSpy = mockMenuFetch();
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'siamo in 3, qualcosa di piccante' }),
+    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(fetchSpy.calls, 1);
+  const parsed = JSON.parse(response.body);
+  assert.ok(Array.isArray(parsed.items));
+  assert.match(parsed.note, /stile spicy/i);
 });
