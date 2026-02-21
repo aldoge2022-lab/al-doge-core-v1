@@ -1,138 +1,83 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const Module = require('node:module');
 
-const { handler, __resetMenuCache } = require('../netlify/functions/ai-suggest');
-
-const menuFixture = {
-  size_engine: {
-    default: 'normale',
-    options: {
-      normale: { label: 'Normale', surcharge_cents: 0 }
-    }
-  },
-  menu: [
-    { id: 'margherita', name: 'Margherita', base_price_cents: 800, active: true },
-    { id: 'diavola', name: 'Diavola', base_price_cents: 950, active: true }
-  ]
+const originalLoad = Module._load;
+const openaiState = {
+  calls: [],
+  createImpl: async () => ({ output_text: 'Prova risposta' })
 };
 
-function mockMenuFetch(payload = menuFixture, status = 200) {
-  let calls = 0;
-  const wrapped = async () => ({
-    ok: status >= 200 && status < 300,
-    status,
-    async json() {
-      return payload;
-    }
-  });
-  Object.defineProperty(wrapped, 'calls', {
-    get() {
-      return calls;
-    }
-  });
-  global.fetch = async () => {
-    calls += 1;
-    return wrapped();
-  };
-  Object.defineProperty(global.fetch, 'calls', {
-    get() {
-      return calls;
-    }
-  });
-  return global.fetch;
-}
+Module._load = function mockOpenAILoad(request, parent, isMain) {
+  if (request === 'openai') {
+    return function OpenAI(config) {
+      return {
+        config,
+        responses: {
+          create: async (payload) => {
+            openaiState.calls.push({ config, payload });
+            return openaiState.createImpl(payload, config);
+          }
+        }
+      };
+    };
+  }
+  return originalLoad.call(this, request, parent, isMain);
+};
+
+const aiSuggestPath = require.resolve('../netlify/functions/ai-suggest');
+delete require.cache[aiSuggestPath];
+const { handler } = require('../netlify/functions/ai-suggest');
 
 test.beforeEach(() => {
-  process.env.SITE_URL = 'https://example.com';
-  __resetMenuCache();
-  mockMenuFetch();
+  openaiState.calls = [];
+  openaiState.createImpl = async () => ({ output_text: 'Prova risposta' });
+  process.env.OPENAI_API_KEY = 'test-key';
 });
 
 test.after(() => {
-  delete process.env.SITE_URL;
-  delete global.fetch;
-});
-
-test('ai-suggest returns 400 for empty message', async () => {
-  const response = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify({ message: '   ' })
-  });
-
-  assert.equal(response.statusCode, 400);
-  assert.equal(JSON.parse(response.body).code, 'INVALID_INPUT');
+  delete process.env.OPENAI_API_KEY;
+  delete require.cache[aiSuggestPath];
+  Module._load = originalLoad;
 });
 
 test('ai-suggest returns 405 for non-POST requests', async () => {
   const response = await handler({ httpMethod: 'GET' });
   assert.equal(response.statusCode, 405);
-  assert.equal(JSON.parse(response.body).code, 'METHOD_NOT_ALLOWED');
+  assert.equal(response.body, 'Method Not Allowed');
 });
 
-test('ai-suggest returns 400 for too long message', async () => {
+test('ai-suggest returns 400 when message is missing', async () => {
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ message: 'a'.repeat(401) })
+    body: JSON.stringify({})
   });
-
   assert.equal(response.statusCode, 400);
-  assert.equal(JSON.parse(response.body).code, 'INVALID_INPUT');
+  assert.equal(JSON.parse(response.body).error, 'Missing message');
 });
 
-test('ai-suggest returns items array for valid message', async () => {
+test('ai-suggest returns OpenAI reply payload on success', async () => {
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ message: 'Vorrei 2 margherita' }),
-    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
+    body: JSON.stringify({ message: 'Consigliami una pizza' })
   });
-
   assert.equal(response.statusCode, 200);
-  const parsed = JSON.parse(response.body);
-  assert.ok(Array.isArray(parsed.items));
-  assert.equal(parsed.items[0].id, 'margherita');
-  assert.equal(parsed.items[0].qty, 2);
-  assert.match(parsed.note, /Proposta per/i);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).reply, 'Prova risposta');
+  assert.equal(openaiState.calls.length, 1);
+  assert.equal(openaiState.calls[0].config.apiKey, 'test-key');
+  assert.equal(openaiState.calls[0].payload.model, 'gpt-5-2-mini');
 });
 
-test('ai-suggest falls back to first active item when no menu match is found', async () => {
-  const response = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify({ message: 'siamo in 3, proposta leggera' }),
-    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
-  });
-
-  assert.equal(response.statusCode, 200);
-  const parsed = JSON.parse(response.body);
-  assert.equal(parsed.items[0].id, 'margherita');
-  assert.equal(parsed.items[0].qty, 3);
-});
-
-test('ai-suggest returns 500 with code when menu fetch fails', async () => {
-  mockMenuFetch({}, 503);
+test('ai-suggest returns 500 on runtime errors', async () => {
+  openaiState.createImpl = async () => {
+    throw new Error('Boom');
+  };
 
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ message: 'Vorrei una proposta' }),
-    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
+    body: JSON.stringify({ message: 'Consigliami una pizza' })
   });
-
   assert.equal(response.statusCode, 500);
-  const parsed = JSON.parse(response.body);
-  assert.equal(parsed.code, 'MENU_FETCH_FAILED');
-  assert.deepEqual(parsed.items, []);
-});
-
-test('ai-suggest handles required spicy message without 500', async () => {
-  const fetchSpy = mockMenuFetch();
-  const response = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify({ message: 'siamo in 3, qualcosa di piccante' }),
-    headers: { host: 'example.com', 'x-forwarded-proto': 'https' }
-  });
-
-  assert.equal(response.statusCode, 200);
-  assert.equal(fetchSpy.calls, 1);
-  const parsed = JSON.parse(response.body);
-  assert.ok(Array.isArray(parsed.items));
-  assert.match(parsed.note, /stile spicy/i);
+  assert.equal(JSON.parse(response.body).error, 'Boom');
 });
