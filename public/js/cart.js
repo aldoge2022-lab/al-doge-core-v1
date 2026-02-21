@@ -98,9 +98,7 @@ function alDogeFormatEUR(v) {
 
 function alDogeProceedToCheckoutSafe(cart) {
   if (typeof window.proceedToCheckout === 'function') return window.proceedToCheckout(cart);
-  if (typeof window.createCheckoutSession === 'function') return window.createCheckoutSession(cart);
-  if (typeof window.checkout === 'function') return window.checkout(cart);
-  alert('Checkout non collegato: manca proceedToCheckout/createCheckoutSession/checkout.');
+  alert('Checkout non collegato: manca proceedToCheckout.');
 }
 
 function alDogeRenderCartDrawer() {
@@ -222,9 +220,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const btn2 = document.getElementById('cartCheckoutBtnTop');
 
   function goCheckout() {
-    const cart = alDogeGetCartSafe();
-    if (!cart.length) return;
-    alDogeProceedToCheckoutSafe(cart);
+    const cart = (window.Cart && typeof window.Cart.getCart === 'function')
+      ? window.Cart.getCart()
+      : { items: [] };
+    if (!cart.items || !cart.items.length) return;
+    window.proceedToCheckout(cart);
   }
 
   if (btn1) btn1.addEventListener('click', goCheckout);
@@ -234,3 +234,105 @@ document.addEventListener('DOMContentLoaded', () => {
     alDogeRenderCartDrawer();
   });
 });
+
+document.addEventListener('DOMContentLoaded', () => {
+  const backBtn = document.getElementById('cartBackBtn');
+  const closeBtn = document.getElementById('cartCloseBtn');
+  const backdrop = document.getElementById('cartBackdrop') || document.getElementById('cartDrawerBackdrop');
+
+  function closeDrawerSafe() {
+    if (typeof window.closeDrawer === 'function') return window.closeDrawer();
+    const drawer = document.getElementById('cartDrawer');
+    const bd = document.getElementById('cartBackdrop') || document.getElementById('cartDrawerBackdrop');
+    const openBtn = document.getElementById('cartOpenBtn');
+    if (drawer) drawer.classList.remove('open');
+    if (drawer) drawer.setAttribute('aria-hidden', 'true');
+    if (bd) bd.hidden = true;
+    if (openBtn) openBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  if (backBtn) backBtn.addEventListener('click', () => {
+    closeDrawerSafe();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  if (closeBtn) closeBtn.addEventListener('click', closeDrawerSafe);
+  if (backdrop) backdrop.addEventListener('click', closeDrawerSafe);
+
+  document.addEventListener('keydown', (e) => {
+    const drawer = document.getElementById('cartDrawer');
+    if (e.key === 'Escape' && drawer && drawer.classList.contains('open')) closeDrawerSafe();
+  });
+});
+
+// =========================
+// ✅ Checkout wiring (frontend only)
+// =========================
+window.proceedToCheckout = async function proceedToCheckout(cartPayload) {
+  let items = [];
+
+  try {
+    if (Array.isArray(cartPayload)) {
+      items = cartPayload;
+    } else if (cartPayload && Array.isArray(cartPayload.items)) {
+      items = cartPayload.items;
+    } else if (window.Cart && typeof window.Cart.getCart === 'function') {
+      const c = window.Cart.getCart();
+      if (c && Array.isArray(c.items)) items = c.items;
+    }
+  } catch (_) {}
+
+  if (!items.length) {
+    alert('Il carrello è vuoto');
+    return;
+  }
+
+  const formatoEl = document.querySelector('select[name="formato"], #formato');
+  const formato = formatoEl ? formatoEl.value : undefined;
+
+  const btns = [
+    document.getElementById('cartCheckoutBtn'),
+    document.getElementById('cartCheckoutBtnTop')
+  ].filter(Boolean);
+  btns.forEach((b) => {
+    b.disabled = true;
+  });
+
+  try {
+    const res = await fetch('/.netlify/functions/ordine-ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, formato })
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error('ordine-ai error:', res.status, data);
+      alert(`Errore checkout (${res.status}). Controlla console.`);
+      return;
+    }
+
+    const url =
+      data.url ||
+      data.checkoutUrl ||
+      data.checkout_url ||
+      data.sessionUrl ||
+      data.session_url;
+
+    if (!url) {
+      console.error('ordine-ai response without url:', data);
+      alert('Checkout: risposta senza URL. Controlla console.');
+      return;
+    }
+
+    window.location.href = url;
+  } catch (err) {
+    console.error('checkout exception:', err);
+    alert('Errore rete/JS durante il checkout. Controlla console.');
+  } finally {
+    btns.forEach((b) => {
+      b.disabled = false;
+    });
+  }
+};
