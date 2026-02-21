@@ -50,8 +50,11 @@ exports.handler = async function (event) {
   }
 
   try {
-    const table_number = normalizeTableNumber(event.queryStringParameters?.table_number);
     const body = JSON.parse(event.body || '{}');
+    const table_number = normalizeTableNumber(body.table_number || event.queryStringParameters?.table_number);
+    const split_mode = body.split_mode === true;
+    const split_persons = Number(body.split_persons);
+    const amount_override_cents = body.amount_override_cents === undefined ? null : Number(body.amount_override_cents);
     const cart = Array.isArray(body.cart) ? body.cart : null;
     if (!cart || !cart.length || cart.length > MAX_ITEMS) return invalid();
 
@@ -126,6 +129,9 @@ exports.handler = async function (event) {
     if (!line_items.length) return invalid();
     const total_cents = line_items.reduce((sum, item) => sum + (item.price_data.unit_amount * item.quantity), 0);
     if (total_cents < MIN_PAYMENT_CENTS) return invalid();
+    if (amount_override_cents !== null && (!Number.isInteger(amount_override_cents) || amount_override_cents < MIN_PAYMENT_CENTS)) return invalid();
+    if (amount_override_cents !== null && !split_mode) return invalid();
+    if (split_mode && (!Number.isInteger(split_persons) || split_persons < 1 || split_persons > MAX_QTY)) return invalid();
 
     const { data: order, error: orderError } = await supabase
       .from('orders')
@@ -153,17 +159,47 @@ exports.handler = async function (event) {
       return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
     }
 
+    const charge_cents = amount_override_cents !== null ? amount_override_cents : total_cents;
+    if ((Number(order.paid_cents) || 0) + charge_cents > (Number(order.total_cents) || total_cents)) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'Importo superiore al totale residuo.' }) };
+    }
+
+    const stripeLineItems = amount_override_cents !== null
+      ? [{
+        price_data: {
+          currency: 'eur',
+          product_data: { name: 'Quota conto tavolo' },
+          unit_amount: charge_cents
+        },
+        quantity: 1
+      }]
+      : line_items;
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
-      line_items,
+      line_items: stripeLineItems,
       mode: 'payment',
       metadata: {
         order_id: String(order.id),
+        ...(split_mode ? { payment_mode: 'split', split_persons: String(split_persons) } : {}),
         ...(table_number ? { table_number } : {})
       },
       success_url: `${process.env.SITE_URL}/success.html`,
       cancel_url: `${process.env.SITE_URL}/cancel.html`
     });
+
+    if (split_mode && amount_override_cents !== null) {
+      const { error: paymentError } = await supabase.from('payments').insert([{
+        order_id: order.id,
+        amount_cents: charge_cents,
+        payment_mode: 'split',
+        stripe_session_id: session.id
+      }]);
+      if (paymentError) {
+        console.error('Errore inserimento pagamento split:', paymentError.message);
+        return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
+      }
+    }
 
     return { statusCode: 200, body: JSON.stringify({ url: session.url }) };
   } catch (error) {

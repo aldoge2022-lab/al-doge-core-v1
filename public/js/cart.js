@@ -1,4 +1,15 @@
 (function () {
+  (function initTableMode() {
+    const params = new URLSearchParams(window.location.search);
+    const table = params.get('table');
+    if (table && /^[A-Za-z0-9_-]{1,20}$/.test(table)) {
+      sessionStorage.setItem('active_table', table);
+      document.body.classList.add('table-mode');
+    } else if (sessionStorage.getItem('active_table')) {
+      document.body.classList.add('table-mode');
+    }
+  })();
+
   const STORAGE_KEY = 'cart';
   const ALTERNATE_STORAGE_KEY = 'aldoge_cart';
   const LEGACY_STORAGE_KEY = 'al_doge_cart_v1';
@@ -267,7 +278,7 @@ function alDogeFormatEUR(v) {
 function alDogeGetTableNumberFromQuery() {
   try {
     const params = new URLSearchParams(window.location.search || '');
-    const value = String(params.get('table_number') || '').trim();
+    const value = String(sessionStorage.getItem('active_table') || params.get('table') || params.get('table_number') || '').trim();
     return /^[A-Za-z0-9_-]{1,20}$/.test(value) ? value : null;
   } catch (_) {
     return null;
@@ -286,14 +297,29 @@ async function alDogeProceedToCheckout(cart) {
     : [];
 
   const tableNumber = alDogeGetTableNumberFromQuery();
-  const checkoutEndpoint = tableNumber
-    ? `/.netlify/functions/create-checkout?table_number=${encodeURIComponent(tableNumber)}`
-    : '/.netlify/functions/create-checkout';
+  const splitPersonsInput = document.getElementById('splitPersonsInput');
+  const splitToggleButton = document.getElementById('splitToggleBtn');
+  const splitPersons = Math.max(1, Math.floor(Number(splitPersonsInput && splitPersonsInput.value) || 2));
+  const totalCents = alDogeCalcTotal(cart);
+  const splitMode = Boolean(
+    tableNumber
+    && splitToggleButton
+    && splitToggleButton.getAttribute('aria-pressed') === 'true'
+    && totalCents > 0
+  );
 
-  const response = await fetch(checkoutEndpoint, {
+  const response = await fetch('/.netlify/functions/create-checkout', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cart: checkoutItems })
+    body: JSON.stringify({
+      cart: checkoutItems,
+      ...(tableNumber ? { table_number: tableNumber } : {}),
+      ...(splitMode ? {
+        split_mode: true,
+        split_persons: splitPersons,
+        amount_override_cents: Math.ceil(totalCents / splitPersons)
+      } : {})
+    })
   });
 
   const payload = await response.json();
@@ -451,6 +477,16 @@ function alDogeCloseDrawer() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  const activeTable = alDogeGetTableNumberFromQuery();
+  if (activeTable) {
+    const banner = document.createElement('section');
+    banner.className = 'menu-controls';
+    banner.id = 'tableModeBanner';
+    banner.textContent = `Tavolo ${activeTable} attivo`;
+    const main = document.querySelector('main.container');
+    if (main) main.insertAdjacentElement('afterbegin', banner);
+  }
+
   alDogeRenderCartDrawer();
 
   const openBtn = document.getElementById('cartOpenBtn');
@@ -470,6 +506,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const btn1 = document.getElementById('cartCheckoutBtn');
   const btn2 = document.getElementById('cartCheckoutBtnTop');
+  if (activeTable) {
+    const footer = document.querySelector('.cart-drawer-footer');
+    if (footer && !document.getElementById('splitToggleBtn')) {
+      const splitWrap = document.createElement('div');
+      splitWrap.className = 'cart-total-row';
+      splitWrap.innerHTML = `
+        <label for="splitPersonsInput">Numero persone:</label>
+        <input id="splitPersonsInput" type="number" min="1" value="2" style="width:72px" />
+        <button id="splitToggleBtn" class="cart-checkout" type="button" aria-pressed="false">Dividi conto</button>
+      `;
+      footer.insertBefore(splitWrap, footer.firstChild);
+      const splitToggleBtn = splitWrap.querySelector('#splitToggleBtn');
+      splitToggleBtn.addEventListener('click', () => {
+        const enabled = splitToggleBtn.getAttribute('aria-pressed') === 'true';
+        splitToggleBtn.setAttribute('aria-pressed', enabled ? 'false' : 'true');
+      });
+    }
+  }
 
   async function goCheckout() {
     const cart = alDogeGetCartSafe();
