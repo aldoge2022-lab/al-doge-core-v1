@@ -37,11 +37,11 @@
     cart.items.forEach((item) => {
       totalCents += item.unit_price_cents * item.quantity;
       const li = document.createElement('li');
-      li.textContent = item.quantity + 'x ' + item.name + ' (' + item.size + ') - ' + formatCents(item.unit_price_cents * item.quantity);
+      li.textContent = `${item.quantity}x ${item.name} (${item.size}) - ${formatCents(item.unit_price_cents * item.quantity)}`;
       cartItemsEl.appendChild(li);
     });
 
-    cartTotalEl.textContent = 'Totale: ' + formatCents(totalCents);
+    cartTotalEl.textContent = `Totale: ${formatCents(totalCents)}`;
   }
 
   function initCartUI() {
