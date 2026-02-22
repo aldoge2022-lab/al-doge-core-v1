@@ -84,13 +84,13 @@
       if (Array.isArray(parsed)) {
         return normalizeCart(parsed);
       }
-    } catch (ignoredParseError) {}
+    } catch (_) {}
     try {
       const parsed = JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY));
       if (parsed && Array.isArray(parsed.items)) {
         return normalizeCart(parsed.items);
       }
-    } catch (ignoredParseError) {}
+    } catch (_) {}
     return [];
   }
 
