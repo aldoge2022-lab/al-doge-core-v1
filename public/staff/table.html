@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dettaglio Tavolo</title>
+  <style>
+    :root { font-family: Arial, sans-serif; }
+    body { margin: 0; background: #f8fafc; color: #0f172a; }
+    header { padding: 16px; border-bottom: 1px solid #e2e8f0; background: #fff; }
+    .container { padding: 16px; max-width: 900px; margin: 0 auto; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+    .grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+    .label { color: #64748b; font-size: 0.9rem; }
+    .value { font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    button, a.button {
+      border: 0;
+      border-radius: 8px;
+      background: #2563eb;
+      color: #fff;
+      padding: 8px 12px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    img { max-width: 200px; width: 100%; display: none; margin-top: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+    #error { color: #b91c1c; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong><a href="./index.html">← Dashboard</a></strong>
+  </header>
+  <main class="container">
+    <div id="error" role="alert"></div>
+    <section class="card">
+      <div class="grid">
+        <div><div class="label">Tavolo</div><div class="value" id="table-id">-</div></div>
+        <div><div class="label">Sessione</div><div class="value" id="session-id">-</div></div>
+        <div><div class="label">Totale</div><div class="value" id="total">-</div></div>
+        <div><div class="label">Pagato</div><div class="value" id="paid">-</div></div>
+        <div><div class="label">Residuo</div><div class="value" id="residual">-</div></div>
+        <div><div class="label">Stato</div><div class="value" id="status">-</div></div>
+      </div>
+      <div class="actions" id="actions"></div>
+      <img id="payment-qr" alt="QR pagamento" />
+    </section>
+
+    <section class="card">
+      <h2>Ordini Sessione</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Quantità</th>
+            <th>Prezzo</th>
+            <th>Totale ordine</th>
+          </tr>
+        </thead>
+        <tbody id="orders-body"></tbody>
+      </table>
+    </section>
+  </main>
+  <script type="module" src="./js/table.js"></script>
+</body>
+</html>
