@@ -20,6 +20,15 @@
   <div id="sessions"></div>
 
   <script>
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
     async function refreshSessions() {
       const container = document.getElementById('sessions');
       try {
@@ -27,16 +36,21 @@
         if (!response.ok) throw new Error('Errore caricamento');
         const sessions = await response.json();
 
-        container.innerHTML = sessions.map((session) => `
+        container.innerHTML = sessions.map((session) => {
+          const total = Number(session.total_cents) || 0;
+          const paid = Number(session.paid_cents) || 0;
+          const residual = Number(session.residual_cents) || 0;
+          return `
           <div class="card ${session.status === 'open' ? 'open' : 'closed'}">
-            <strong>Tavolo ${session.table_id}</strong><br>
-            Sessione: ${session.id}<br>
-            Totale: € ${(session.total_cents / 100).toFixed(2)}<br>
-            Pagato: € ${(session.paid_cents / 100).toFixed(2)}<br>
-            Residuo: <strong>€ ${(session.residual_cents / 100).toFixed(2)}</strong><br>
-            Stato: <strong>${session.status}</strong>
+            <strong>Tavolo ${escapeHtml(session.table_id)}</strong><br>
+            Sessione: ${escapeHtml(session.id)}<br>
+            Totale: € ${(total / 100).toFixed(2)}<br>
+            Pagato: € ${(paid / 100).toFixed(2)}<br>
+            Residuo: <strong>€ ${(residual / 100).toFixed(2)}</strong><br>
+            Stato: <strong>${escapeHtml(session.status)}</strong>
           </div>
-        `).join('');
+        `;
+        }).join('');
       } catch (error) {
         container.innerHTML = '<p>Impossibile caricare i dati tavoli.</p>';
       }

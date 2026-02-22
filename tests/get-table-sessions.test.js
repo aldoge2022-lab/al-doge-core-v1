@@ -51,14 +51,16 @@ test('get-table-sessions rejects non-GET', async () => {
 test('get-table-sessions returns mapped rows with residual cents', async () => {
   state.rows = [
     { id: 's1', table_id: 1, total_cents: 2500, paid_cents: 500, status: 'open' },
-    { id: 's2', table_id: 2, total_cents: 4000, paid_cents: 4000, status: 'closed' }
+    { id: 's2', table_id: 2, total_cents: 4000, paid_cents: 4000, status: 'closed' },
+    { id: 's3', table_id: 3, total_cents: 2000, paid_cents: 3000, status: 'open' }
   ];
 
   const response = await handler({ httpMethod: 'GET' });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(JSON.parse(response.body), [
     { id: 's1', table_id: 1, total_cents: 2500, paid_cents: 500, residual_cents: 2000, status: 'open' },
-    { id: 's2', table_id: 2, total_cents: 4000, paid_cents: 4000, residual_cents: 0, status: 'closed' }
+    { id: 's2', table_id: 2, total_cents: 4000, paid_cents: 4000, residual_cents: 0, status: 'closed' },
+    { id: 's3', table_id: 3, total_cents: 2000, paid_cents: 3000, residual_cents: 0, status: 'open' }
   ]);
 });
 

@@ -12,7 +12,11 @@ exports.handler = async function (event) {
       .order('table_id', { ascending: true });
 
     if (error) {
-      return { statusCode: 500, body: JSON.stringify({ error: 'Database error' }) };
+      return {
+        statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Database error' })
+      };
     }
 
     const result = data.map((row) => ({
@@ -20,17 +24,19 @@ exports.handler = async function (event) {
       table_id: row.table_id,
       total_cents: row.total_cents,
       paid_cents: row.paid_cents,
-      residual_cents: row.total_cents - row.paid_cents,
+      residual_cents: Math.max(0, row.total_cents - row.paid_cents),
       status: row.status
     }));
 
     return {
       statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(result)
     };
   } catch (error) {
     return {
       statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: 'Internal error' })
     };
   }
