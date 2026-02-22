@@ -7,6 +7,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ALLOWED_SPLIT_COUNTS = new Set([2, 3, 4, 5, 6, 8]);
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
@@ -50,7 +51,7 @@ exports.handler = async function (event) {
     let splitCountForMetadata;
     if (mode === 'split') {
       const splitCount = body.split_count;
-      if (!Number.isInteger(splitCount) || splitCount < 2 || splitCount > 20) {
+      if (!Number.isInteger(splitCount) || !ALLOWED_SPLIT_COUNTS.has(splitCount)) {
         return { statusCode: 400, body: JSON.stringify({ error: 'Invalid split_count' }) };
       }
       splitCountForMetadata = splitCount;

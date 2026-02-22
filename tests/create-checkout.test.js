@@ -112,18 +112,50 @@ test('create-checkout rejects sessions with no residuo', async () => {
   assert.equal(checkoutCalls.length, 0);
 });
 
-test('create-checkout validates split_count hard limits', async () => {
+test('create-checkout accepts split_count 2', async () => {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({
       session_id: '9fc4ae15-43b0-4d59-b7b9-8588ec7f885f',
       mode: 'split',
-      split_count: 21
+      split_count: 2
     })
   });
 
-  assert.equal(response.statusCode, 400);
-  assert.equal(checkoutCalls.length, 0);
+  assert.equal(response.statusCode, 200);
+  assert.equal(checkoutCalls.length, 1);
+  assert.equal(checkoutCalls[0].metadata.split_count, '2');
+});
+
+test('create-checkout accepts split_count 8', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      session_id: '9fc4ae15-43b0-4d59-b7b9-8588ec7f885f',
+      mode: 'split',
+      split_count: 8
+    })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(checkoutCalls.length, 1);
+  assert.equal(checkoutCalls[0].metadata.split_count, '8');
+});
+
+test('create-checkout rejects disallowed split_count values', async () => {
+  for (const split_count of [7, 1, 20]) {
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({
+        session_id: '9fc4ae15-43b0-4d59-b7b9-8588ec7f885f',
+        mode: 'split',
+        split_count
+      })
+    });
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(checkoutCalls.length, 0);
+  }
 });
 
 test('create-checkout computes split amount from residuo server-side', async () => {
