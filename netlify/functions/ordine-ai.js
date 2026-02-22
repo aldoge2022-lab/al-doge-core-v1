@@ -1,6 +1,7 @@
 const Stripe = require("stripe");
 const catalog = require("../../data/catalog");
 const supabase = require("./_supabase");
+const { generatePizza, generatePanino } = require("./ordine-ai/engine");
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY non configurata");
@@ -302,6 +303,29 @@ Puoi completare il pagamento sicuro qui:
 ${session.url}
 
 Appena confermato, iniziamo la preparazione.`
+        })
+      };
+    }
+
+    const lowerMessage = message.toLowerCase();
+    const includesPersonal = lowerMessage.includes("personal");
+
+    if (lowerMessage.includes("pizza") && includesPersonal) {
+      const custom = generatePizza({ richiesta: message, menu: dynamicMenuItems });
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          reply: `Ecco la tua pizza personalizzata: ${custom.nome} — Ingredienti: ${custom.ingredienti.join(", ")} — Prezzo: €${custom.prezzo}`
+        })
+      };
+    }
+
+    if (lowerMessage.includes("panino") && includesPersonal) {
+      const custom = generatePanino({ richiesta: message, menu: dynamicMenuItems });
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          reply: `Ecco il tuo panino personalizzato: ${custom.nome} — Ingredienti: ${custom.ingredienti.join(", ")} — Prezzo: €${custom.prezzo}`
         })
       };
     }
