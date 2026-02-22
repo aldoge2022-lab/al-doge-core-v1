@@ -96,6 +96,24 @@
     ]
   };
 
+  catalog.menu = (catalog.menu || []).map((item) => ({
+    ...item,
+    allergeni: Array.isArray(item.allergeni) ? item.allergeni : [],
+    categoria: item.categoria || 'pizza',
+    varianti: item.varianti && typeof item.varianti === 'object'
+      ? item.varianti
+      : { impasto: Object.keys(catalog.doughs || {}) },
+    promozioni: item.promozioni && typeof item.promozioni === 'object' ? item.promozioni : {}
+  }));
+
+  catalog.drinks = (catalog.drinks || []).map((item) => ({
+    ...item,
+    allergeni: Array.isArray(item.allergeni) ? item.allergeni : [],
+    categoria: item.categoria || 'bevanda',
+    varianti: item.varianti && typeof item.varianti === 'object' ? item.varianti : {},
+    promozioni: item.promozioni && typeof item.promozioni === 'object' ? item.promozioni : {}
+  }));
+
   catalog.size_engine = {
     default: 'normale',
     options: catalog.doughs
