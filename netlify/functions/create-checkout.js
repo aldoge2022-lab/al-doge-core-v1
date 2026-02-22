@@ -78,6 +78,7 @@ exports.handler = async function (event) {
       mode: 'payment',
       metadata: {
         session_id: String(tableSession.id),
+        amount_cents: String(amount),
         mode: String(mode),
         ...(splitCountForMetadata ? { split_count: String(splitCountForMetadata) } : {})
       },

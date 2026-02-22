@@ -26,59 +26,57 @@ exports.handler = async function (event) {
     return { statusCode: 200, body: 'Ignored' };
   }
 
-  const session = stripeEvent.data.object;
-  const order_id = session.metadata?.order_id;
-  if (!order_id) {
-    return { statusCode: 200, body: 'Missing order metadata' };
-  }
+  try {
+    const session = stripeEvent.data.object || {};
+    const session_id = session.metadata?.session_id;
+    const amount_cents = Number(session.metadata?.amount_cents);
+    const payment_intent = session.payment_intent;
 
-  const { data: order, error: orderError } = await supabase
-    .from('table_orders')
-    .select('id, table_id, paid')
-    .eq('id', order_id)
-    .single();
-  if (orderError || !order) {
-    return { statusCode: 200, body: 'Order not found' };
-  }
+    if (!session_id || !Number.isInteger(amount_cents) || amount_cents <= 0 || !payment_intent) {
+      return { statusCode: 200, body: 'Invalid metadata' };
+    }
 
-  if (order.paid) {
-    return { statusCode: 200, body: 'Already paid' };
-  }
+    const { error: paymentError } = await supabase
+      .from('stripe_payments')
+      .insert({
+        payment_intent: String(payment_intent),
+        session_id,
+        amount_cents
+      });
+    if (paymentError) {
+      if (paymentError.code === '23505') {
+        return { statusCode: 200, body: 'Already processed' };
+      }
+      return { statusCode: 200, body: 'Payment insert failed' };
+    }
 
-  const { error: updateError } = await supabase
-    .from('table_orders')
-    .update({
-      paid: true,
-      status: 'paid'
-    })
-    .eq('id', order.id)
-    .eq('paid', false);
-  if (updateError) {
-    return { statusCode: 500, body: 'Order update failed' };
-  }
+    const incrementValue = typeof supabase.raw === 'function'
+      ? supabase.raw(`paid_cents + ${amount_cents}`)
+      : `paid_cents + ${amount_cents}`;
 
-  const { data: tableOrders, error: tableOrdersError } = await supabase
-    .from('table_orders')
-    .select('id, total_cents, paid')
-    .eq('table_id', order.table_id);
-  if (tableOrdersError) {
-    return { statusCode: 500, body: 'Table total recalculation failed' };
-  }
+    const { data, error } = await supabase
+      .from('table_sessions')
+      .update({
+        paid_cents: incrementValue
+      })
+      .eq('id', session_id)
+      .eq('status', 'open')
+      .lt('paid_cents', 'total_cents')
+      .select()
+      .single();
+    if (error || !data) {
+      return { statusCode: 200, body: 'Session not updated' };
+    }
 
-  const remainingTotal = (tableOrders || []).reduce((sum, tableOrder) => {
-    if (tableOrder.id === order.id) return sum;
-    return tableOrder.paid ? sum : sum + (Number(tableOrder.total_cents) || 0);
-  }, 0);
-
-  const { error: tableUpdateError } = await supabase
-    .from('restaurant_tables')
-    .update({
-      total_cents: remainingTotal,
-      status: remainingTotal === 0 ? 'closed' : 'open'
-    })
-    .eq('id', order.table_id);
-  if (tableUpdateError) {
-    return { statusCode: 500, body: 'Table update failed' };
+    if (Number(data.paid_cents) >= Number(data.total_cents)) {
+      await supabase
+        .from('table_sessions')
+        .update({ status: 'closed' })
+        .eq('id', session_id)
+        .eq('status', 'open');
+    }
+  } catch (err) {
+    console.error('Errore stripe-webhook:', err.message);
   }
 
   return { statusCode: 200, body: 'Success' };

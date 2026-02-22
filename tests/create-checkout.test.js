@@ -78,6 +78,7 @@ test('create-checkout accepts only session_id/mode and uses db residuo for full 
   assert.equal(checkoutCalls[0].line_items[0].quantity, 1);
   assert.equal(checkoutCalls[0].line_items[0].price_data.currency, 'eur');
   assert.equal(checkoutCalls[0].metadata.session_id, '9fc4ae15-43b0-4d59-b7b9-8588ec7f885f');
+  assert.equal(checkoutCalls[0].metadata.amount_cents, '12000');
   assert.equal(checkoutCalls[0].metadata.mode, 'full');
   assert.equal(checkoutCalls[0].metadata.split_count, undefined);
   assert.equal(checkoutCalls[0].success_url, `${process.env.SITE_URL}/success.html`);
@@ -174,6 +175,7 @@ test('create-checkout computes split amount from residuo server-side', async () 
   assert.equal(payload.amount, 3000);
   assert.equal(payload.residuo_attuale, 9000);
   assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 3000);
+  assert.equal(checkoutCalls[0].metadata.amount_cents, '3000');
   assert.equal(checkoutCalls[0].metadata.mode, 'split');
   assert.equal(checkoutCalls[0].metadata.split_count, '3');
 });
