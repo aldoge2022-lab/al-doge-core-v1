@@ -35,3 +35,18 @@ test('catalog exposes normalized metadata for menu and drinks', () => {
   assert.ok(Array.isArray(drink.tags));
   assert.equal(drink.extraPrice, 0);
 });
+
+test('catalog normalizes every array section item shape', () => {
+  const catalog = require('../public/data/catalog');
+
+  Object.keys(catalog).forEach((section) => {
+    if (!Array.isArray(catalog[section])) return;
+    catalog[section].forEach((item) => {
+      assert.equal(item.type, 'generic');
+      assert.equal(item.size, 'standard');
+      assert.ok(Array.isArray(item.ingredients));
+      assert.ok(Array.isArray(item.tags));
+      assert.equal(item.extraPrice, 0);
+    });
+  });
+});
