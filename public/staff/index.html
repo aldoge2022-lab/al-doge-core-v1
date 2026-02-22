@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Tavoli</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, sans-serif;
+    }
+    body { margin: 0; background: #f7f8fa; color: #1e293b; }
+    header { padding: 16px; background: #fff; border-bottom: 1px solid #e2e8f0; }
+    h1 { margin: 0; font-size: 1.4rem; }
+    .muted { margin-top: 6px; color: #64748b; font-size: 0.95rem; }
+    #error { margin: 12px 16px 0; color: #b91c1c; font-size: 0.95rem; min-height: 1.2em; }
+    #grid {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .card {
+      background: #fff;
+      border: 2px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 12px;
+      cursor: pointer;
+    }
+    .card.open { border-color: #16a34a; }
+    .card.closed { border-color: #dc2626; }
+    .row { display: flex; justify-content: space-between; margin-top: 6px; }
+    .badge {
+      display: inline-block;
+      margin-top: 8px;
+      background: #fb923c;
+      color: #7c2d12;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      padding: 4px 8px;
+    }
+    .status-icon { font-size: 1rem; margin-right: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Dashboard Tavoli</h1>
+    <div class="muted">Aggiornamento automatico ogni 5 secondi</div>
+  </header>
+  <div id="error" role="alert"></div>
+  <main id="grid" aria-live="polite"></main>
+  <script type="module" src="./js/dashboard.js"></script>
+</body>
+</html>
