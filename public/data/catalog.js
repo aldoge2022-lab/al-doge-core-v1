@@ -1,10 +1,8 @@
 (function (global) {
   const normalizeItem = (item) => ({
     ...item,
-    id: item.id,
-    name: item.name,
     type: item.type || 'generic',
-    price: Number(item.price ?? item.base_price_cents ?? item.price_cents ?? 0),
+    price: Number(item.price ?? 0),
     size: item.size || 'standard',
     ingredients: Array.isArray(item.ingredients)
       ? item.ingredients
