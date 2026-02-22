@@ -49,6 +49,16 @@ test('checkout accepts non-finite numeric price', async () => {
   assert.equal(response.statusCode, 200);
 });
 
+test('checkout rejects malformed NaN price literal payload', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: '{"cart":{"items":[{"type":"pizza","id":"margherita","price":NaN}]}}'
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).error, 'Invalid input');
+});
+
 test('checkout rejects item without id', async () => {
   const response = await handler({
     httpMethod: 'POST',
