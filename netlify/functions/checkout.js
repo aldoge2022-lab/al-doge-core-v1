@@ -16,9 +16,9 @@ exports.handler = async function (event) {
       if (item.type !== 'pizza') {
         item.size = item.size || 'standard';
         item.dough = item.dough || null;
-        item.ingredients = item.ingredients || [];
-        item.tags = item.tags || [];
-        item.extraPrice = item.extraPrice || 0;
+        item.ingredients = Array.isArray(item.ingredients) ? item.ingredients : [];
+        item.tags = Array.isArray(item.tags) ? item.tags : [];
+        item.extraPrice = Number(item.extraPrice) || 0;
       }
 
       // Final sanity checks

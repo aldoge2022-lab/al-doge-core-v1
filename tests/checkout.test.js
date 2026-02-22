@@ -64,3 +64,22 @@ test('checkout rejects item without id', async () => {
   assert.equal(response.statusCode, 400);
   assert.equal(JSON.parse(response.body).error, 'Invalid input');
 });
+
+test('checkout coerces non-pizza extra fields to safe defaults', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      cart: {
+        items: [
+          { type: 'drink', id: 'cola', price: 2, ingredients: 'bad', tags: null, extraPrice: '1.5' }
+        ]
+      }
+    })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const payload = JSON.parse(response.body);
+  assert.deepEqual(payload.cart.items[0].ingredients, []);
+  assert.deepEqual(payload.cart.items[0].tags, []);
+  assert.equal(payload.cart.items[0].extraPrice, 1.5);
+});
