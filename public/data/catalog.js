@@ -1,4 +1,17 @@
 (function (global) {
+  const normalizeItem = (item) => ({
+    ...item,
+    type: item.type || 'generic',
+    size: item.size || 'standard',
+    ingredients: Array.isArray(item.ingredients)
+      ? item.ingredients
+      : (Array.isArray(item.ingredienti) ? item.ingredienti : []),
+    tags: Array.isArray(item.tags)
+      ? item.tags
+      : (Array.isArray(item.tag) ? item.tag : []),
+    extraPrice: Number.isFinite(item.extraPrice) ? item.extraPrice : 0
+  });
+
   const catalog = {
     doughs: {
       normale: { label: 'Normale', surcharge_cents: 0 },
@@ -96,7 +109,7 @@
     ]
   };
 
-  catalog.menu = (catalog.menu || []).map((item) => ({
+  catalog.menu = (catalog.menu || []).map((item) => normalizeItem({
     ...item,
     allergeni: Array.isArray(item.allergeni) ? item.allergeni : [],
     categoria: item.categoria || 'pizza',
@@ -106,7 +119,7 @@
     promozioni: item.promozioni && typeof item.promozioni === 'object' ? item.promozioni : {}
   }));
 
-  catalog.drinks = (catalog.drinks || []).map((item) => ({
+  catalog.drinks = (catalog.drinks || []).map((item) => normalizeItem({
     ...item,
     allergeni: Array.isArray(item.allergeni) ? item.allergeni : [],
     categoria: item.categoria || 'bevanda',
