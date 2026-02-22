@@ -10,6 +10,16 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/api/menu"
+  to = "/.netlify/functions/api-menu"
+  status = 200
+
+[[redirects]]
+  from = "/api/update-menu-item"
+  to = "/.netlify/functions/update-menu-item"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
