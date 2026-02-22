@@ -3,9 +3,10 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 
 let state = {
+  existingSession: null,
   insertResult: { data: { id: 'session_1' }, error: null },
   throwOnFrom: false,
-  closeCalls: [],
+  existingCalls: [],
   insertCalls: []
 };
 
@@ -18,16 +19,18 @@ const supabaseMock = {
       throw new Error(`Unexpected table: ${table}`);
     }
     return {
-      update: (payload) => {
-        const closeCall = { payload, filters: [] };
-        state.closeCalls.push(closeCall);
+      select: (selection) => {
+        const existingCall = { selection, filters: [] };
+        state.existingCalls.push(existingCall);
         return {
           eq: (field, value) => {
-            closeCall.filters.push({ field, value });
+            existingCall.filters.push({ field, value });
             return {
-              eq: async (field2, value2) => {
-                closeCall.filters.push({ field: field2, value: value2 });
-                return { error: null };
+              eq: (field2, value2) => {
+                existingCall.filters.push({ field: field2, value: value2 });
+                return {
+                  maybeSingle: async () => ({ data: state.existingSession, error: null })
+                };
               }
             };
           }
@@ -55,9 +58,10 @@ Module._load = originalLoad;
 
 test.beforeEach(() => {
   state = {
+    existingSession: null,
     insertResult: { data: { id: 'session_1' }, error: null },
     throwOnFrom: false,
-    closeCalls: [],
+    existingCalls: [],
     insertCalls: []
   };
 });
@@ -76,7 +80,7 @@ test('open-table-session validates table_id', async () => {
   assert.equal(JSON.parse(response.body).error, 'Invalid table_id');
 });
 
-test('open-table-session closes previous open sessions and creates new one', async () => {
+test('open-table-session creates new session for valid table', async () => {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ table_id: '7' })
@@ -84,8 +88,8 @@ test('open-table-session closes previous open sessions and creates new one', asy
 
   assert.equal(response.statusCode, 200);
   assert.deepEqual(JSON.parse(response.body), { success: true, session_id: 'session_1' });
-  assert.deepEqual(state.closeCalls[0], {
-    payload: { status: 'closed' },
+  assert.deepEqual(state.existingCalls[0], {
+    selection: 'id',
     filters: [
       { field: 'table_id', value: 7 },
       { field: 'status', value: 'open' }
@@ -97,6 +101,19 @@ test('open-table-session closes previous open sessions and creates new one', asy
     paid_cents: 0,
     status: 'open'
   });
+});
+
+test('open-table-session returns 409 when a session is already open', async () => {
+  state.existingSession = { id: 'session_existing' };
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ table_id: 7 })
+  });
+
+  assert.equal(response.statusCode, 409);
+  assert.equal(JSON.parse(response.body).error, 'Session already open');
+  assert.equal(state.insertCalls.length, 0);
 });
 
 test('open-table-session returns database error when insert fails', async () => {
