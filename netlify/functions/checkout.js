@@ -11,25 +11,23 @@ exports.handler = async function (event) {
       throw new Error('Invalid input');
     }
 
-    const normalizedItems = cart.items.map((item) => {
-      const normalized = { ...item };
-      if (normalized.type !== 'pizza') {
-        normalized.size = normalized.size || 'standard';
-        normalized.dough = normalized.dough || null;
-        normalized.ingredients = normalized.ingredients || [];
-        normalized.tags = normalized.tags || [];
-        normalized.extraPrice = normalized.extraPrice ?? 0;
+    for (const item of cart.items) {
+      // Ensure non-pizza items (drinks, extras) have the minimal fields expected by validation
+      if (item.type !== 'pizza') {
+        item.size = item.size || 'standard';
+        item.dough = item.dough || null;
+        item.ingredients = item.ingredients || [];
+        item.tags = item.tags || [];
+        item.extraPrice = item.extraPrice || 0;
       }
-      return normalized;
-    });
 
-    for (const item of normalizedItems) {
-      if (!item.id || typeof item.price !== 'number' || !Number.isFinite(item.price)) {
+      // Final sanity checks
+      if (!item.id || typeof item.price !== 'number' || Number.isNaN(item.price)) {
         throw new Error('Invalid input');
       }
     }
 
-    return { statusCode: 200, body: JSON.stringify({ cart: { items: normalizedItems } }) };
+    return { statusCode: 200, body: JSON.stringify({ cart: { items: cart.items } }) };
   } catch (error) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid input' }) };
   }
