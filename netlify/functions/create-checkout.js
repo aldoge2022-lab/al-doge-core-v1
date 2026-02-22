@@ -7,6 +7,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const MIN_PAYMENT_CENTS = 1;
+const ALLOWED_SPLIT_COUNTS = new Set([2, 3, 4, 5, 6, 8]);
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
@@ -19,6 +20,12 @@ exports.handler = async function (event) {
 
   try {
     const body = JSON.parse(event.body || '{}');
+    const splitCount = body.split_count;
+    if (body.mode === 'split') {
+      if (!Number.isInteger(splitCount) || !ALLOWED_SPLIT_COUNTS.has(splitCount)) {
+        return { statusCode: 400, body: JSON.stringify({ error: 'Invalid split_count' }) };
+      }
+    }
     const order_id = body.order_id;
     if (!order_id) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Invalid input' }) };

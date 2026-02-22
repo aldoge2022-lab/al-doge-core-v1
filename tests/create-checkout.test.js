@@ -61,7 +61,7 @@ const { handler } = require('../netlify/functions/create-checkout');
 Module._load = originalLoad;
 
 test.beforeEach(() => {
-  checkoutCalls = [];
+  checkoutCalls.length = 0;
   updatedOrders = [];
   selectedOrder = {
     id: 'to_1',
@@ -127,4 +127,24 @@ test('create-checkout rejects when checkout is already created', async () => {
 
   assert.equal(response.statusCode, 409);
   assert.equal(checkoutCalls.length, 0);
+});
+
+test('create-checkout rejects disallowed split_count values', async () => {
+  const invalidValues = [7, 1, 20, 0, -2, 2.5, "2", null, undefined];
+
+  for (const split_count of invalidValues) {
+    checkoutCalls.length = 0;
+
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({
+        session_id: '9fc4ae15-43b0-4d59-b7b9-8588ec7f885f',
+        mode: 'split',
+        split_count
+      })
+    });
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(checkoutCalls.length, 0);
+  }
 });
