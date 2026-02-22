@@ -1,11 +1,6 @@
 const Stripe = require('stripe');
 const supabase = require('./_supabase');
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY non configurata');
-}
-
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ALLOWED_SPLIT_COUNTS = new Set([2, 3, 4, 5, 6, 8]);
 
@@ -17,8 +12,12 @@ exports.handler = async function (event) {
   if (!process.env.SITE_URL) {
     return { statusCode: 500, body: 'SITE_URL non configurato' };
   }
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return { statusCode: 500, body: JSON.stringify({ error: 'STRIPE_SECRET_KEY non configurata' }) };
+  }
 
   try {
+    const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
     const body = JSON.parse(event.body || '{}');
     const session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';
     const mode = body.mode;

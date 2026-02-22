@@ -1,13 +1,16 @@
 const Stripe = require('stripe');
 const supabase = require('./_supabase');
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY non configurata');
-}
-
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 exports.handler = async function (event) {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return { statusCode: 500, body: JSON.stringify({ error: 'STRIPE_SECRET_KEY non configurata' }) };
+  }
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    return { statusCode: 500, body: JSON.stringify({ error: 'STRIPE_WEBHOOK_SECRET non configurata' }) };
+  }
+
+  const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
   const sig = event.headers['stripe-signature'];
 
   let stripeEvent;
@@ -19,11 +22,11 @@ exports.handler = async function (event) {
     );
   } catch (err) {
     console.error('Errore firma Stripe:', err.message);
-    return { statusCode: 400, body: `Webhook Error: ${err.message}` };
+    return { statusCode: 400, body: JSON.stringify({ error: `Webhook Error: ${err.message}` }) };
   }
 
   if (stripeEvent.type !== 'checkout.session.completed') {
-    return { statusCode: 200, body: 'Ignored' };
+    return { statusCode: 200, body: JSON.stringify({ message: 'Ignored' }) };
   }
 
   try {
@@ -34,7 +37,7 @@ exports.handler = async function (event) {
     const MAX_INT32 = 2147483647;
 
     if (!session_id || !Number.isSafeInteger(amount_cents) || amount_cents <= 0 || amount_cents > MAX_INT32 || !payment_intent) {
-      return { statusCode: 200, body: 'Invalid metadata' };
+      return { statusCode: 200, body: JSON.stringify({ message: 'Invalid metadata' }) };
     }
 
     const { error: paymentError } = await supabase
@@ -46,9 +49,9 @@ exports.handler = async function (event) {
       });
     if (paymentError) {
       if (paymentError.code === '23505') {
-        return { statusCode: 200, body: 'Already processed' };
+        return { statusCode: 200, body: JSON.stringify({ message: 'Already processed' }) };
       }
-      return { statusCode: 200, body: 'Payment insert failed' };
+      return { statusCode: 200, body: JSON.stringify({ message: 'Payment insert failed' }) };
     }
 
     const incrementValue = typeof supabase.raw === 'function'
@@ -66,7 +69,7 @@ exports.handler = async function (event) {
       .select()
       .single();
     if (error || !data) {
-      return { statusCode: 200, body: 'Session not updated' };
+      return { statusCode: 200, body: JSON.stringify({ message: 'Session not updated' }) };
     }
 
     if (Number(data.paid_cents) >= Number(data.total_cents)) {
@@ -80,5 +83,5 @@ exports.handler = async function (event) {
     console.error('Errore stripe-webhook:', err.message);
   }
 
-  return { statusCode: 200, body: 'Success' };
+  return { statusCode: 200, body: JSON.stringify({ message: 'Success' }) };
 };
