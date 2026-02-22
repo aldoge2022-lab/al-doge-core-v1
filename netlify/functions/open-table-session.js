@@ -13,12 +13,22 @@ exports.handler = async function (event) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Invalid table_id' }) };
     }
 
-    await supabase
+    // 🔒 Verifica se esiste già sessione open
+    const { data: existing } = await supabase
       .from('table_sessions')
-      .update({ status: 'closed' })
+      .select('id')
       .eq('table_id', table_id)
-      .eq('status', 'open');
+      .eq('status', 'open')
+      .maybeSingle();
 
+    if (existing) {
+      return {
+        statusCode: 409,
+        body: JSON.stringify({ error: 'Session already open' })
+      };
+    }
+
+    // Creazione nuova sessione
     const { data, error } = await supabase
       .from('table_sessions')
       .insert({
