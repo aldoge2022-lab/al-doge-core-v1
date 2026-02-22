@@ -18,7 +18,7 @@ function pickDrink(cart) {
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method not allowed' };
+    return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
   try {
@@ -41,6 +41,6 @@ exports.handler = async function (event) {
       })
     };
   } catch (error) {
-    return { statusCode: 400, body: 'Invalid input' };
+    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid input' }) };
   }
 };

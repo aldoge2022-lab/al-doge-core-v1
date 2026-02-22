@@ -3,12 +3,6 @@ const catalog = require("../../data/catalog");
 const supabase = require("./_supabase");
 const { generatePizza, generatePanino } = require("./ordine-ai/engine");
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY non configurata");
-}
-
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-
 const MAX_INPUT_LENGTH = 500;
 const MAX_CHECKOUT_ITEMS = 30;
 const MAX_ITEM_QUANTITY = 20;
@@ -166,8 +160,12 @@ exports.handler = async function (event) {
   if (!process.env.SITE_URL) {
     return { statusCode: 500, body: "SITE_URL non configurato" };
   }
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return { statusCode: 500, body: "STRIPE_SECRET_KEY non configurata" };
+  }
 
   try {
+    const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
     const body = JSON.parse(event.body || "{}");
     const rawItems = Array.isArray(body.items) ? body.items : null;
 

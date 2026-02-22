@@ -2,11 +2,11 @@ const MAX_MESSAGE_LENGTH = 1000;
 
 exports.handler = async function (event) {
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method not allowed" };
+    return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
   }
 
   if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
-    return { statusCode: 500, body: "Telegram non configurato" };
+    return { statusCode: 500, body: JSON.stringify({ error: "Telegram non configurato" }) };
   }
 
   try {
@@ -28,7 +28,7 @@ Totale: €${Number.isFinite(total) ? total.toFixed(2) : "0.00"}
         : "")
     ).trim();
     if (!text || text.length > MAX_MESSAGE_LENGTH) {
-      return { statusCode: 400, body: "Invalid input" };
+      return { statusCode: 400, body: JSON.stringify({ error: "Invalid input" }) };
     }
 
     const response = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -41,12 +41,12 @@ Totale: €${Number.isFinite(total) ? total.toFixed(2) : "0.00"}
     });
 
     if (!response.ok) {
-      return { statusCode: 502, body: "Telegram request failed" };
+      return { statusCode: 502, body: JSON.stringify({ error: "Telegram request failed" }) };
     }
 
     return { statusCode: 200, body: JSON.stringify({ ok: true }) };
   } catch (error) {
     console.error("Errore telegram-notify:", error.message);
-    return { statusCode: 500, body: "Errore tecnico temporaneo" };
+    return { statusCode: 500, body: JSON.stringify({ error: "Errore tecnico temporaneo" }) };
   }
 };
