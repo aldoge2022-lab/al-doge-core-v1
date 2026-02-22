@@ -1,85 +1,96 @@
-/apply-patch <<'PATCH'
-*** Begin Patch
-*** Add File: public/data/catalog.js
-+// public/data/catalog.js
-+// Catalogo normalizzato: garantisce che ogni item abbia i campi minimi richiesti dal checkout.
-+
-+const normalizeItem = (item) => ({
-+  id: item.id,
-+  name: item.name,
-+  type: item.type || 'generic',
-+  price: Number(item.price) || 0,
-+  size: item.size || 'standard',
-+  dough: item.dough || null,
-+  ingredients: Array.isArray(item.ingredients) ? item.ingredients : [],
-+  tags: Array.isArray(item.tags) ? item.tags : [],
-+  extraPrice: Number(item.extraPrice) || 0,
-+  ...Object.keys(item).reduce((acc, k) => {
-+    if (!['id','name','type','price','size','dough','ingredients','tags','extraPrice'].includes(k)) {
-+      acc[k] = item[k];
-+    }
-+    return acc;
-+  }, {})
-+});
-+
-+let catalog = {
-+  pizzas: [
-+    {
-+      id: 'margherita',
-+      name: 'Margherita',
-+      price: 600,
-+      type: 'pizza',
-+      ingredients: ['pomodoro', 'mozzarella'],
-+      tags: ['classica']
-+    },
-+    {
-+      id: 'diavola',
-+      name: 'Diavola',
-+      price: 700,
-+      type: 'pizza',
-+      ingredients: ['pomodoro', 'mozzarella', 'salame piccante'],
-+      tags: ['piccante']
-+    },
-+    {
-+      id: 'quattro-formaggi',
-+      name: 'Quattro Formaggi',
-+      price: 800,
-+      type: 'pizza',
-+      ingredients: ['mozzarella', 'gorgonzola', 'parmigiano', 'provola'],
-+      tags: ['formaggi']
-+    }
-+  ],
-+  drinks: [
-+    {
-+      id: 'acqua-05',
-+      name: 'Acqua 0.5L',
-+      price: 150,
-+      type: 'drink'
-+    },
-+    {
-+      id: 'birra-05',
-+      name: 'Birra 0.5L',
-+      price: 500,
-+      type: 'drink'
-+    }
-+  ],
-+  extras: [
-+    {
-+      id: 'extra-olio',
-+      name: 'Olio extra',
-+      price: 50,
-+      type: 'extra'
-+    }
-+  ]
-+};
-+
-+Object.keys(catalog || {}).forEach((section) => {
-+  if (Array.isArray(catalog[section])) {
-+    catalog[section] = catalog[section].map(normalizeItem);
-+  }
-+});
-+
-+module.exports = catalog;
-+
-*** End Patch
-PATCH
+// public/data/catalog.js
+// Catalogo normalizzato: garantisce che ogni item abbia i campi minimi richiesti dal checkout.
+
+const normalizeItem = (item) => ({
+  id: item.id,
+  name: item.name,
+  type: item.type || 'generic',
+  price: Number(item.price) || 0,
+  size: item.size || 'standard',
+  dough: item.dough || null,
+  ingredients: Array.isArray(item.ingredients) ? item.ingredients : [],
+  ingredienti: Array.isArray(item.ingredienti) ? item.ingredienti : (Array.isArray(item.ingredients) ? item.ingredients : []),
+  tags: Array.isArray(item.tags) ? item.tags : [],
+  tag: Array.isArray(item.tag) ? item.tag : (Array.isArray(item.tags) ? item.tags : []),
+  active: item.active !== false,
+  price_cents: Number(item.price_cents ?? item.price) || 0,
+  base_price_cents: Number(item.base_price_cents ?? item.price) || 0,
+  extraPrice: Number(item.extraPrice) || 0,
+  ...Object.keys(item).reduce((acc, k) => {
+    if (!['id','name','type','price','size','dough','ingredients','ingredienti','tags','tag','active','price_cents','base_price_cents','extraPrice'].includes(k)) {
+      acc[k] = item[k];
+    }
+    return acc;
+  }, {})
+});
+
+let catalog = {
+  pizzas: [
+    {
+      id: 'margherita',
+      name: 'Margherita',
+      price: 600,
+      type: 'pizza',
+      ingredients: ['pomodoro', 'mozzarella'],
+      tags: ['classica']
+    },
+    {
+      id: 'diavola',
+      name: 'Diavola',
+      price: 700,
+      type: 'pizza',
+      ingredients: ['pomodoro', 'mozzarella', 'salame piccante'],
+      tags: ['piccante']
+    },
+    {
+      id: 'quattro-formaggi',
+      name: 'Quattro Formaggi',
+      price: 800,
+      type: 'pizza',
+      ingredients: ['mozzarella', 'gorgonzola', 'parmigiano', 'provola'],
+      tags: ['formaggi']
+    },
+    {
+      id: 'bufala',
+      name: 'Bufala',
+      price: 900,
+      type: 'pizza',
+      ingredients: ['pomodoro', 'mozzarella di bufala'],
+      tags: ['premium']
+    }
+  ],
+  drinks: [
+    {
+      id: 'acqua-05',
+      name: 'Acqua 0.5L',
+      price: 150,
+      type: 'drink'
+    },
+    {
+      id: 'birra-05',
+      name: 'Birra 0.5L',
+      price: 500,
+      type: 'drink'
+    }
+  ],
+  extras: [
+    {
+      id: 'extra-olio',
+      name: 'Olio extra',
+      price: 50,
+      type: 'extra'
+    }
+  ]
+};
+
+Object.keys(catalog || {}).forEach((section) => {
+  if (Array.isArray(catalog[section])) {
+    catalog[section] = catalog[section].map(normalizeItem);
+  }
+});
+
+catalog.menu = Array.isArray(catalog.menu) ? catalog.menu : catalog.pizzas;
+catalog.doughs = catalog.doughs || { normale: { surcharge_cents: 0 } };
+catalog.size_engine = catalog.size_engine || { default: 'normale' };
+
+module.exports = catalog;
