@@ -84,7 +84,7 @@ test('create-table-order normalizes numeric table_id string', async () => {
   assert.equal(insertedOrders[0].table_id, 7);
   assert.deepEqual(rpcCalls[0], {
     fn: 'increment_table_total',
-    params: { table_id_input: 7, amount_input: 700 }
+    params: { table_id_input: 7, amount_input: 600 }
   });
 });
 
@@ -116,11 +116,23 @@ test('create-table-order recalculates total from catalog and updates table total
   assert.equal(insertedOrders[0].table_id, 7);
   assert.equal(insertedOrders[0].paid, false);
   assert.equal(insertedOrders[0].status, 'pending');
-  assert.equal(insertedOrders[0].total_cents, 1900);
+  assert.equal(insertedOrders[0].total_cents, 1700);
   assert.deepEqual(rpcCalls[0], {
     fn: 'increment_table_total',
-    params: { table_id_input: 7, amount_input: 1900 }
+    params: { table_id_input: 7, amount_input: 1700 }
   });
+});
+
+test('create-table-order accepts newly added catalog pizzas', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      table_id: 7,
+      items: [{ id: 'bufala', qty: 1 }]
+    })
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(insertedOrders[0].total_cents, 900);
 });
 
 test('create-table-order rejects unknown catalog item', async () => {
