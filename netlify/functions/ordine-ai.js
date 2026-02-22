@@ -307,7 +307,10 @@ Appena confermato, iniziamo la preparazione.`
       };
     }
 
-    if (message.toLowerCase().includes("pizza") && message.toLowerCase().includes("personal")) {
+    const lowerMessage = message.toLowerCase();
+    const includesPersonal = lowerMessage.includes("personal");
+
+    if (lowerMessage.includes("pizza") && includesPersonal) {
       const custom = generatePizza({ richiesta: message, menu: dynamicMenuItems });
       return {
         statusCode: 200,
@@ -317,7 +320,7 @@ Appena confermato, iniziamo la preparazione.`
       };
     }
 
-    if (message.toLowerCase().includes("panino") && message.toLowerCase().includes("personal")) {
+    if (lowerMessage.includes("panino") && includesPersonal) {
       const custom = generatePanino({ richiesta: message, menu: dynamicMenuItems });
       return {
         statusCode: 200,
