@@ -29,7 +29,7 @@
         .replaceAll("'", '&#39;');
     }
 
-    async function refreshSessions() {
+    async function loadTables() {
       const container = document.getElementById('sessions');
       try {
         const response = await fetch('/.netlify/functions/get-table-sessions');
@@ -37,6 +37,7 @@
         const sessions = await response.json();
 
         container.innerHTML = sessions.map((session) => {
+          const tableId = Number(session.table_id);
           const total = Number(session.total_cents) || 0;
           const paid = Number(session.paid_cents) || 0;
           const residual = Number(session.residual_cents) || 0;
@@ -44,20 +45,35 @@
           <div class="card ${session.status === 'open' ? 'open' : 'closed'}">
             <strong>Tavolo ${escapeHtml(session.table_id)}</strong><br>
             Sessione: ${escapeHtml(session.id)}<br>
-            Totale: € ${(total / 100).toFixed(2)}<br>
-            Pagato: € ${(paid / 100).toFixed(2)}<br>
-            Residuo: <strong>€ ${(residual / 100).toFixed(2)}</strong><br>
-            Stato: <strong>${escapeHtml(session.status)}</strong>
-          </div>
-        `;
+             Totale: € ${(total / 100).toFixed(2)}<br>
+             Pagato: € ${(paid / 100).toFixed(2)}<br>
+             Residuo: <strong>€ ${(residual / 100).toFixed(2)}</strong><br>
+             Stato: <strong>${escapeHtml(session.status)}</strong>
+             ${session.status === 'closed' && Number.isInteger(tableId) && tableId > 0 ? `<br><button type="button" onclick="openSession(${tableId})">Riapri tavolo</button>` : ''}
+           </div>
+         `;
         }).join('');
       } catch (error) {
         container.innerHTML = '<p>Impossibile caricare i dati tavoli.</p>';
       }
     }
 
-    refreshSessions();
-    setInterval(refreshSessions, 5000);
+    async function openSession(table_id) {
+      try {
+        const response = await fetch('/.netlify/functions/open-table-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ table_id })
+        });
+        if (!response.ok) throw new Error('open-session-failed');
+        loadTables();
+      } catch (error) {
+        alert('Impossibile riaprire il tavolo.');
+      }
+    }
+
+    loadTables();
+    setInterval(loadTables, 5000);
   </script>
 </body>
 </html>
