@@ -103,6 +103,7 @@
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = catalog;
+  } else {
+    global.ALDOGE_CATALOG = catalog;
   }
-  global.ALDOGE_CATALOG = catalog;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
