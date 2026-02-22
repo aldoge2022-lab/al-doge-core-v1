@@ -39,3 +39,29 @@ test('checkout rejects non-numeric price', async () => {
   assert.equal(response.statusCode, 400);
   assert.equal(JSON.parse(response.body).error, 'Invalid input');
 });
+
+test('checkout rejects non-finite numeric price', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: '{"cart":{"items":[{"type":"pizza","id":"margherita","price":1e309}]}}'
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).error, 'Invalid input');
+});
+
+test('checkout rejects item without id', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      cart: {
+        items: [
+          { type: 'pizza', price: 6 }
+        ]
+      }
+    })
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).error, 'Invalid input');
+});

@@ -11,21 +11,25 @@ exports.handler = async function (event) {
       throw new Error('Invalid input');
     }
 
-    for (const item of cart.items) {
-      if (item.type !== 'pizza') {
-        item.size = item.size || 'standard';
-        item.dough = item.dough || null;
-        item.ingredients = item.ingredients || [];
-        item.tags = item.tags || [];
-        item.extraPrice = item.extraPrice || 0;
+    const normalizedItems = cart.items.map((item) => {
+      const normalized = { ...item };
+      if (normalized.type !== 'pizza') {
+        normalized.size = normalized.size || 'standard';
+        normalized.dough = normalized.dough || null;
+        normalized.ingredients = normalized.ingredients || [];
+        normalized.tags = normalized.tags || [];
+        normalized.extraPrice = normalized.extraPrice ?? 0;
       }
+      return normalized;
+    });
 
-      if (!item.id || typeof item.price !== 'number') {
+    for (const item of normalizedItems) {
+      if (!item.id || typeof item.price !== 'number' || !Number.isFinite(item.price)) {
         throw new Error('Invalid input');
       }
     }
 
-    return { statusCode: 200, body: JSON.stringify({ cart }) };
+    return { statusCode: 200, body: JSON.stringify({ cart: { items: normalizedItems } }) };
   } catch (error) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid input' }) };
   }
