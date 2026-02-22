@@ -1,6 +1,8 @@
 // public/data/catalog.js
 // Catalogo normalizzato: garantisce che ogni item abbia i campi minimi richiesti dal checkout.
 
+const NORMALIZED_KEYS = new Set(['id', 'name', 'type', 'price', 'size', 'dough', 'ingredients', 'tags', 'extraPrice']);
+
 const normalizeItem = (item) => ({
   id: item.id,
   name: item.name,
@@ -16,7 +18,7 @@ const normalizeItem = (item) => ({
   extraPrice: Number(item.extraPrice) || 0,
   // Qualsiasi campo extra viene preservato
   ...Object.keys(item).reduce((acc, k) => {
-    if (!['id','name','type','price','size','dough','ingredients','tags','extraPrice'].includes(k)) {
+    if (!NORMALIZED_KEYS.has(k)) {
       acc[k] = item[k];
     }
     return acc;
@@ -114,7 +116,5 @@ catalog.size_engine = {
   default: 'normale',
   options: catalog.doughs
 };
-
-catalog.extras.burrata = { label: 'Burrata', price_cents: 150 };
 
 module.exports = catalog;
