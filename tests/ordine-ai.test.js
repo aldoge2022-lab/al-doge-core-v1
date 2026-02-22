@@ -116,6 +116,26 @@ test('returns conversational reply when no order intent/phone is found', async (
   assert.match(JSON.parse(response.body).reply, /(Posso consigliarti|Ti consiglio)/);
 });
 
+test('returns custom pizza reply when message asks for personal pizza', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Vorrei una pizza personalizzata' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.match(JSON.parse(response.body).reply, /Ecco la tua pizza personalizzata:/);
+});
+
+test('returns custom panino reply when message asks for personal panino', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Vorrei un panino personalizzato' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.match(JSON.parse(response.body).reply, /Ecco il tuo panino personalizzato:/);
+});
+
 test('creates checkout session and telegram notification for valid order', async () => {
   process.env.TELEGRAM_BOT_TOKEN = 'token';
   process.env.TELEGRAM_CHAT_ID = 'chat';
