@@ -1,5 +1,6 @@
 const Stripe = require("stripe");
 const catalog = require("../../data/catalog");
+const supabase = require("./_supabase");
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY non configurata");
@@ -26,6 +27,34 @@ const MENU = {
   "boscaiola": 8
 };
 
+function normalizeMenuItem(rawItem) {
+  if (!rawItem || typeof rawItem !== "object") return null;
+  const nome = String(rawItem.nome || "").trim();
+  const prezzo = Number(rawItem.promozioni?.prezzo_scontato ?? rawItem.prezzo);
+  if (!nome || !Number.isFinite(prezzo) || prezzo <= 0) return null;
+  return {
+    name: nome.toLowerCase(),
+    displayName: nome,
+    price: Number(prezzo.toFixed(2)),
+    ingredienti: Array.isArray(rawItem.ingredienti) ? rawItem.ingredienti : [],
+    tag: Array.isArray(rawItem.tag) ? rawItem.tag : [],
+    varianti: rawItem.varianti && typeof rawItem.varianti === "object" ? rawItem.varianti : {}
+  };
+}
+
+async function loadMenuItems() {
+  try {
+    const { data, error } = await supabase
+      .from("menu_items")
+      .select("nome, prezzo, ingredienti, tag, varianti, promozioni")
+      .eq("disponibile", true);
+    if (error || !Array.isArray(data)) return [];
+    return data.map(normalizeMenuItem).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function containsPhone(text) {
   return /(\+39)?[\s-]?\d{2,4}[\s-]?\d{6,8}/.test(text);
 }
@@ -44,26 +73,45 @@ function detectUrgency(text) {
     .some((word) => text.toLowerCase().includes(word));
 }
 
-function extractItems(text) {
+function extractItems(text, menuItemsByName) {
   const lower = text.toLowerCase();
   const found = [];
+  const entries = menuItemsByName
+    ? Array.from(menuItemsByName.entries())
+    : Object.entries(MENU).map(([name, price]) => [name, { displayName: name, price }]);
 
-  for (const item of Object.keys(MENU)) {
-    if (lower.includes(item)) {
-      const escapedItem = item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const [name, menuItem] of entries) {
+    if (lower.includes(name)) {
+      const escapedItem = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(`(\\d+)\\s*(x)?\\s*${escapedItem}`);
       const match = lower.match(regex);
       const qty = match ? parseInt(match[1], 10) : 1;
 
       found.push({
-        name: item,
+        name: menuItem.displayName,
         qty,
-        price: MENU[item]
+        price: menuItem.price
       });
     }
   }
 
   return found;
+}
+
+function buildSuggestionReply(message, menuItems) {
+  if (!menuItems.length) {
+    return "Posso consigliarti una delle nostre pizze più apprezzate. Cosa preferisci?";
+  }
+  const lower = message.toLowerCase();
+  let pick = menuItems[0];
+  if (lower.includes("vegetar")) {
+    pick = menuItems.find((item) => item.tag.some((tag) => String(tag).toLowerCase().includes("vegetar"))) || pick;
+  } else if (lower.includes("piccant") || lower.includes("forte")) {
+    pick = menuItems.find((item) => item.tag.some((tag) => ["forte", "piccante"].includes(String(tag).toLowerCase()))) || pick;
+  }
+  const ingredienti = pick.ingredienti.length ? ` Ingredienti: ${pick.ingredienti.join(", ")}.` : "";
+  const varianti = Object.keys(pick.varianti).length ? ` Varianti: ${Object.keys(pick.varianti).join(", ")}.` : "";
+  return `Ti consiglio ${pick.displayName} (€${pick.price}).${ingredienti}${varianti}`.trim();
 }
 
 function pizzaUnitAmount(item, pizzasById) {
@@ -186,6 +234,8 @@ exports.handler = async function (event) {
     }
 
     const message = (body.message || "").trim();
+    const dynamicMenuItems = await loadMenuItems();
+    const dynamicMenuByName = new Map(dynamicMenuItems.map((item) => [item.name, item]));
 
     if (!message || message.length > MAX_INPUT_LENGTH) {
       return { statusCode: 400, body: "Invalid input" };
@@ -195,7 +245,7 @@ exports.handler = async function (event) {
     const hasIntent = containsOrderIntent(message);
 
     if (hasPhone && hasIntent) {
-      const items = extractItems(message);
+      const items = extractItems(message, dynamicMenuByName.size ? dynamicMenuByName : null);
       const urgent = detectUrgency(message);
 
       if (!items.length) {
@@ -211,7 +261,7 @@ exports.handler = async function (event) {
         price_data: {
           currency: "eur",
           product_data: { name: item.name },
-          unit_amount: item.price * 100
+          unit_amount: Math.round(item.price * 100)
         },
         quantity: item.qty
       }));
@@ -259,7 +309,7 @@ Appena confermato, iniziamo la preparazione.`
     return {
       statusCode: 200,
       body: JSON.stringify({
-        reply: "Posso consigliarti una delle nostre pizze più apprezzate. Cosa preferisci?"
+        reply: buildSuggestionReply(message, dynamicMenuItems)
       })
     };
   } catch (error) {

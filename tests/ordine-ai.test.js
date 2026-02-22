@@ -18,6 +18,7 @@ const stripeMock = () => ({
 });
 
 let telegramCalls = [];
+let menuItemsRows = [];
 global.fetch = async (url, options) => {
   telegramCalls.push({ url, options });
   return { ok: true };
@@ -46,6 +47,16 @@ Module._load = function (request, parent, isMain) {
         if (table === 'order_items') {
           return { insert: async () => ({ error: null }) };
         }
+        if (table === 'menu_items') {
+          return {
+            select: () => ({
+              eq: async () => ({
+                data: menuItemsRows,
+                error: null
+              })
+            })
+          };
+        }
         throw new Error(`Unexpected table: ${table}`);
       }
     };
@@ -58,6 +69,24 @@ Module._load = originalLoad;
 test.beforeEach(() => {
   checkoutCalls = [];
   telegramCalls = [];
+  menuItemsRows = [
+    {
+      nome: 'margherita',
+      prezzo: 6,
+      ingredienti: ['pomodoro', 'mozzarella'],
+      tag: ['classica'],
+      varianti: { impasto: ['normale'] },
+      promozioni: {}
+    },
+    {
+      nome: 'diavola',
+      prezzo: 7,
+      ingredienti: ['salame piccante'],
+      tag: ['forte'],
+      varianti: { impasto: ['normale'] },
+      promozioni: {}
+    }
+  ];
 });
 
 test('returns 405 for non-POST requests', async () => {
@@ -84,7 +113,7 @@ test('returns conversational reply when no order intent/phone is found', async (
   });
 
   assert.equal(response.statusCode, 200);
-  assert.match(JSON.parse(response.body).reply, /Posso consigliarti/);
+  assert.match(JSON.parse(response.body).reply, /(Posso consigliarti|Ti consiglio)/);
 });
 
 test('creates checkout session and telegram notification for valid order', async () => {
@@ -133,4 +162,24 @@ test('returns 400 for cart items payload with invalid product id', async () => {
 
   assert.equal(response.statusCode, 400);
   assert.equal(response.body, 'Invalid input');
+});
+
+test('uses discounted menu_items price for AI order parsing', async () => {
+  menuItemsRows = [{
+    nome: 'margherita',
+    prezzo: 6,
+    ingredienti: ['pomodoro', 'mozzarella'],
+    tag: ['classica'],
+    varianti: { impasto: ['normale'] },
+    promozioni: { prezzo_scontato: 5.5 }
+  }];
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Ordino 2 margherita, +39 3331234567' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.match(JSON.parse(response.body).reply, /Totale ordine: €11/);
+  assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 550);
 });
