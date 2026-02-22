@@ -1,147 +1,120 @@
-(function (global) {
-  const normalizeItem = (item) => ({
-    ...item,
-    type: item.type || 'generic',
-    size: item.size || 'standard',
-    ingredients: Array.isArray(item.ingredients)
-      ? item.ingredients
-      : (Array.isArray(item.ingredienti) ? item.ingredienti : []),
-    tags: Array.isArray(item.tags)
-      ? item.tags
-      : (Array.isArray(item.tag) ? item.tag : []),
-    extraPrice: Number.isFinite(item.extraPrice) ? item.extraPrice : 0
-  });
+// public/data/catalog.js
+// Catalogo normalizzato: garantisce che ogni item abbia i campi minimi richiesti dal checkout.
 
-  const catalog = {
-    doughs: {
-      normale: { label: 'Normale', surcharge_cents: 0 },
-      kamut: { label: 'Kamut', surcharge_cents: 200 }
-    },
-    extras: {
-      burrata: { label: 'Burrata', price_cents: 150 }
-    },
-    cover_charge_cents: 200,
-    menu: [
-      {
-        id: 'margherita',
-        name: 'Margherita',
-        base_price_cents: 600,
-        ingredienti: ['pomodoro', 'mozzarella'],
-        tag: ['classica', 'leggera'],
-        active: true
-      },
-      {
-        id: 'diavola',
-        name: 'Diavola',
-        base_price_cents: 700,
-        ingredienti: ['pomodoro', 'mozzarella', 'salame piccante'],
-        tag: ['forte', 'piccante'],
-        active: true
-      },
-      {
-        id: 'capricciosa',
-        name: 'Capricciosa',
-        base_price_cents: 800,
-        ingredienti: ['pomodoro', 'mozzarella', 'prosciutto', 'funghi', 'carciofi'],
-        tag: ['corposa'],
-        active: true
-      },
-      {
-        id: 'quattro-stagioni',
-        name: 'Quattro Stagioni',
-        base_price_cents: 800,
-        ingredienti: ['pomodoro', 'mozzarella', 'funghi', 'carciofi', 'olive', 'prosciutto'],
-        tag: ['corposa'],
-        active: true
-      },
-      {
-        id: 'quattro-formaggi',
-        name: 'Quattro Formaggi',
-        base_price_cents: 800,
-        ingredienti: ['mozzarella', 'gorgonzola', 'grana', 'fontina'],
-        tag: ['gourmet'],
-        active: true
-      },
-      {
-        id: 'prosciutto',
-        name: 'Prosciutto',
-        base_price_cents: 700,
-        ingredienti: ['pomodoro', 'mozzarella', 'prosciutto'],
-        tag: ['classica'],
-        active: true
-      },
-      {
-        id: 'tonno',
-        name: 'Tonno',
-        base_price_cents: 700,
-        ingredienti: ['pomodoro', 'mozzarella', 'tonno'],
-        tag: ['mare'],
-        active: true
-      },
-      {
-        id: 'vegetariana',
-        name: 'Vegetariana',
-        base_price_cents: 700,
-        ingredienti: ['pomodoro', 'mozzarella', 'zucchine', 'melanzane', 'peperoni'],
-        tag: ['vegetariana', 'leggera'],
-        active: true
-      },
-      {
-        id: 'bufala',
-        name: 'Bufala',
-        base_price_cents: 900,
-        ingredienti: ['pomodoro', 'mozzarella di bufala'],
-        tag: ['gourmet', 'leggera'],
-        active: true
-      },
-      {
-        id: 'boscaiola',
-        name: 'Boscaiola',
-        base_price_cents: 800,
-        ingredienti: ['mozzarella', 'salsiccia', 'funghi'],
-        tag: ['corposa'],
-        active: true
-      }
-    ],
-    drinks: [
-      { id: 'birra-05', name: 'Birra 0.5L', price_cents: 500, active: true },
-      { id: 'acqua-05', name: 'Acqua 0.5L', price_cents: 150, active: true }
-    ]
-  };
+const NORMALIZED_KEYS = new Set(['id', 'name', 'type', 'price', 'size', 'dough', 'ingredients', 'tags', 'extraPrice']);
 
-  // Normalize every section in the catalog to ensure consistent item shape
-  Object.keys(catalog || {}).forEach((section) => {
-    if (Array.isArray(catalog[section])) {
-      catalog[section] = catalog[section].map(normalizeItem);
+const normalizeItem = (item) => ({
+  id: item.id,
+  name: item.name,
+  type: item.type || 'generic',
+  // Prezzo memorizzato in centesimi come number (es. €6.00 -> 600)
+  price: Number(item.price) || 0,
+  // Formato/size (utile per pizze e fallback per bevande)
+  size: item.size || 'standard',
+  // Campi opzionali ma richiesti dalla validazione del checkout
+  dough: item.dough || null,
+  ingredients: Array.isArray(item.ingredients) ? item.ingredients : [],
+  tags: Array.isArray(item.tags) ? item.tags : [],
+  extraPrice: Number(item.extraPrice) || 0,
+  // Qualsiasi campo extra viene preservato
+  ...Object.keys(item).reduce((acc, k) => {
+    if (!NORMALIZED_KEYS.has(k)) {
+      acc[k] = item[k];
     }
-  });
+    return acc;
+  }, {})
+});
 
-  catalog.menu = (catalog.menu || []).map((item) => normalizeItem({
-    ...item,
-    allergeni: Array.isArray(item.allergeni) ? item.allergeni : [],
-    categoria: item.categoria || 'pizza',
-    varianti: item.varianti && typeof item.varianti === 'object'
-      ? item.varianti
-      : { impasto: Object.keys(catalog.doughs || {}) },
-    promozioni: item.promozioni && typeof item.promozioni === 'object' ? item.promozioni : {}
-  }));
+// Definizione iniziale del catalogo (esempi reali; mantieni o estendi con i tuoi item)
+let catalog = {
+  pizzas: [
+    {
+      id: 'margherita',
+      name: 'Margherita',
+      price: 600,
+      type: 'pizza',
+      ingredients: ['pomodoro', 'mozzarella'],
+      tags: ['classica']
+    },
+    {
+      id: 'diavola',
+      name: 'Diavola',
+      price: 700,
+      type: 'pizza',
+      ingredients: ['pomodoro', 'mozzarella', 'salame piccante'],
+      tags: ['piccante']
+    },
+    {
+      id: 'quattro-formaggi',
+      name: 'Quattro Formaggi',
+      price: 800,
+      type: 'pizza',
+      ingredients: ['mozzarella', 'gorgonzola', 'parmigiano', 'provola'],
+      tags: ['formaggi']
+    },
+    {
+      id: 'bufala',
+      name: 'Bufala',
+      price: 900,
+      type: 'pizza',
+      ingredients: ['pomodoro', 'mozzarella di bufala'],
+      tags: ['gourmet', 'leggera']
+    }
+  ],
+  drinks: [
+    {
+      id: 'acqua-05',
+      name: 'Acqua 0.5L',
+      price: 150,
+      type: 'drink'
+    },
+    {
+      id: 'birra-05',
+      name: 'Birra 0.5L',
+      price: 500,
+      type: 'drink'
+    }
+  ],
+  extras: [
+    {
+      id: 'extra-olio',
+      name: 'Olio extra',
+      price: 50,
+      type: 'extra'
+    }
+  ]
+};
 
-  catalog.drinks = (catalog.drinks || []).map((item) => normalizeItem({
-    ...item,
-    allergeni: Array.isArray(item.allergeni) ? item.allergeni : [],
-    categoria: item.categoria || 'bevanda',
-    varianti: item.varianti && typeof item.varianti === 'object' ? item.varianti : {},
-    promozioni: item.promozioni && typeof item.promozioni === 'object' ? item.promozioni : {}
-  }));
-
-  catalog.size_engine = {
-    default: 'normale',
-    options: catalog.doughs
-  };
-
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = catalog;
-  } else {
-    global.ALDOGE_CATALOG = catalog;
+// Normalizza ogni sezione del catalogo per assicurare forma coerente
+Object.keys(catalog || {}).forEach((section) => {
+  if (Array.isArray(catalog[section])) {
+    catalog[section] = catalog[section].map(normalizeItem);
   }
-})(typeof globalThis !== 'undefined' ? globalThis : this);
+});
+
+// Compatibilità retroattiva per le funzioni server che leggono la struttura legacy.
+catalog.menu = (catalog.pizzas || []).map((item) => ({
+  ...item,
+  ingredienti: item.ingredients,
+  tag: item.tags,
+  base_price_cents: Number(item.price) || 0,
+  active: true
+}));
+
+catalog.drinks = (catalog.drinks || []).map((item) => ({
+  ...item,
+  price_cents: Number(item.price) || 0,
+  active: true
+}));
+
+catalog.doughs = {
+  normale: { label: 'Normale', surcharge_cents: 0 },
+  kamut: { label: 'Kamut', surcharge_cents: 200 }
+};
+
+catalog.size_engine = {
+  default: 'normale',
+  options: catalog.doughs
+};
+
+module.exports = catalog;

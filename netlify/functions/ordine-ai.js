@@ -121,8 +121,16 @@ function pizzaUnitAmount(item, pizzasById) {
   const dough = catalog.doughs[item.dough] || catalog.doughs.normale;
   const extras = Array.isArray(item.extras) ? item.extras : [];
   const extrasTotal = extras.reduce((sum, extraId) => {
-    const extra = catalog.extras[extraId];
-    return sum + (extra ? extra.price_cents : 0);
+    const fromListById = Array.isArray(catalog.extras)
+      ? catalog.extras.find((extra) => extra && extra.id === extraId)
+      : null;
+    const fromListByName = !fromListById && Array.isArray(catalog.extras)
+      ? catalog.extras.find((extra) => extra && extra.name === extraId)
+      : null;
+    const fromMap = !Array.isArray(catalog.extras) && catalog.extras ? catalog.extras[extraId] : null;
+    const extra = fromListById || fromListByName || fromMap;
+    const cents = Number(extra?.price_cents ?? extra?.price);
+    return sum + (Number.isFinite(cents) ? cents : 0);
   }, 0);
   return pizza.base_price_cents + dough.surcharge_cents + extrasTotal;
 }
