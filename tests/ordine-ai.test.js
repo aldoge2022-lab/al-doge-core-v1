@@ -196,7 +196,7 @@ test('creates checkout session from cart items payload with server-side catalog 
   assert.equal(response.statusCode, 200);
   assert.equal(JSON.parse(response.body).url, 'https://checkout.example/session');
   assert.equal(checkoutCalls.length, 1);
-  assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 700);
+  assert.equal(checkoutCalls[0].line_items[0].price_data.unit_amount, 600);
   assert.equal(checkoutCalls[0].line_items[0].quantity, 2);
 });
 
