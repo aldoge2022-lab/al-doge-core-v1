@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stato Tavoli Live</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f7f7; }
+    h1 { margin-top: 0; }
+    #sessions { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+    .card { padding: 12px; border-radius: 10px; color: #111; background: #fff; border: 2px solid transparent; }
+    .open { border-color: #ff9800; background: #fff3e0; }
+    .closed { border-color: #2e7d32; background: #e8f5e9; }
+    .muted { color: #555; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <h1>📊 Stato Tavoli Live</h1>
+  <p class="muted">Aggiornamento automatico ogni 5 secondi.</p>
+  <div id="sessions"></div>
+
+  <script>
+    async function refreshSessions() {
+      const container = document.getElementById('sessions');
+      try {
+        const response = await fetch('/.netlify/functions/get-table-sessions');
+        if (!response.ok) throw new Error('Errore caricamento');
+        const sessions = await response.json();
+
+        container.innerHTML = sessions.map((session) => `
+          <div class="card ${session.status === 'open' ? 'open' : 'closed'}">
+            <strong>Tavolo ${session.table_id}</strong><br>
+            Sessione: ${session.id}<br>
+            Totale: € ${(session.total_cents / 100).toFixed(2)}<br>
+            Pagato: € ${(session.paid_cents / 100).toFixed(2)}<br>
+            Residuo: <strong>€ ${(session.residual_cents / 100).toFixed(2)}</strong><br>
+            Stato: <strong>${session.status}</strong>
+          </div>
+        `).join('');
+      } catch (error) {
+        container.innerHTML = '<p>Impossibile caricare i dati tavoli.</p>';
+      }
+    }
+
+    refreshSessions();
+    setInterval(refreshSessions, 5000);
+  </script>
+</body>
+</html>
