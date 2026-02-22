@@ -1,8 +1,6 @@
 // public/data/catalog.js
 // Catalogo normalizzato: garantisce che ogni item abbia i campi minimi richiesti dal checkout.
 
-const NORMALIZED_KEYS = new Set(['id', 'name', 'type', 'price', 'size', 'dough', 'ingredients', 'tags', 'extraPrice']);
-
 const normalizeItem = (item) => ({
   id: item.id,
   name: item.name,
@@ -18,7 +16,7 @@ const normalizeItem = (item) => ({
   extraPrice: Number(item.extraPrice) || 0,
   // Qualsiasi campo extra viene preservato
   ...Object.keys(item).reduce((acc, k) => {
-    if (!NORMALIZED_KEYS.has(k)) {
+    if (!['id','name','type','price','size','dough','ingredients','tags','extraPrice'].includes(k)) {
       acc[k] = item[k];
     }
     return acc;
@@ -51,14 +49,6 @@ let catalog = {
       type: 'pizza',
       ingredients: ['mozzarella', 'gorgonzola', 'parmigiano', 'provola'],
       tags: ['formaggi']
-    },
-    {
-      id: 'bufala',
-      name: 'Bufala',
-      price: 900,
-      type: 'pizza',
-      ingredients: ['pomodoro', 'mozzarella di bufala'],
-      tags: ['gourmet', 'leggera']
     }
   ],
   drinks: [
@@ -91,30 +81,5 @@ Object.keys(catalog || {}).forEach((section) => {
     catalog[section] = catalog[section].map(normalizeItem);
   }
 });
-
-// Compatibilità retroattiva per le funzioni server che leggono la struttura legacy.
-catalog.menu = (catalog.pizzas || []).map((item) => ({
-  ...item,
-  ingredienti: item.ingredients,
-  tag: item.tags,
-  base_price_cents: Number(item.price) || 0,
-  active: true
-}));
-
-catalog.drinks = (catalog.drinks || []).map((item) => ({
-  ...item,
-  price_cents: Number(item.price) || 0,
-  active: true
-}));
-
-catalog.doughs = {
-  normale: { label: 'Normale', surcharge_cents: 0 },
-  kamut: { label: 'Kamut', surcharge_cents: 200 }
-};
-
-catalog.size_engine = {
-  default: 'normale',
-  options: catalog.doughs
-};
 
 module.exports = catalog;
