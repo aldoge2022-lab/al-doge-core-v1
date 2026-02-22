@@ -1,7 +1,10 @@
 (function (global) {
   const normalizeItem = (item) => ({
     ...item,
+    id: item.id,
+    name: item.name,
     type: item.type || 'generic',
+    price: Number(item.price ?? item.base_price_cents ?? item.price_cents ?? 0),
     size: item.size || 'standard',
     ingredients: Array.isArray(item.ingredients)
       ? item.ingredients
@@ -108,6 +111,17 @@
       { id: 'acqua-05', name: 'Acqua 0.5L', price_cents: 150, active: true }
     ]
   };
+
+
+
+  // Normalize every section in the catalog to ensure consistent item shape
+  Object.keys(catalog || {}).forEach((section) => {
+    if (Array.isArray(catalog[section])) {
+      catalog[section] = catalog[section].map((item) => (
+        item && typeof item === 'object' ? normalizeItem(item) : item
+      ));
+    }
+  });
 
   catalog.menu = (catalog.menu || []).map((item) => normalizeItem({
     ...item,

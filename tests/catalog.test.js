@@ -24,6 +24,7 @@ test('catalog exposes normalized metadata for menu and drinks', () => {
   assert.ok(Array.isArray(pizza.ingredients));
   assert.ok(Array.isArray(pizza.tags));
   assert.equal(pizza.extraPrice, 0);
+  assert.equal(typeof pizza.price, 'number');
 
   assert.ok(Array.isArray(drink.allergeni));
   assert.equal(drink.categoria, 'bevanda');
@@ -34,4 +35,5 @@ test('catalog exposes normalized metadata for menu and drinks', () => {
   assert.ok(Array.isArray(drink.ingredients));
   assert.ok(Array.isArray(drink.tags));
   assert.equal(drink.extraPrice, 0);
+  assert.equal(typeof drink.price, 'number');
 });
