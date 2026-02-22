@@ -84,13 +84,13 @@
       if (Array.isArray(parsed)) {
         return normalizeCart(parsed);
       }
-    } catch (_) {}
+    } catch (ignoredParseError) {}
     try {
       const parsed = JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY));
       if (parsed && Array.isArray(parsed.items)) {
         return normalizeCart(parsed.items);
       }
-    } catch (_) {}
+    } catch (ignoredParseError) {}
     return [];
   }
 
@@ -323,7 +323,10 @@ async function alDogeProceedToCheckout(cart) {
         items: checkoutItems.map((item) => ({ id: item.id, qty: Math.max(1, Math.floor(Number(item.quantity) || 1)) }))
       })
     });
-    const tableOrderPayload = await tableOrderResponse.json();
+    let tableOrderPayload = null;
+    try {
+      tableOrderPayload = await tableOrderResponse.json();
+    } catch (ignoredParseError) {}
     if (!tableOrderResponse.ok) {
       throw new Error((tableOrderPayload && tableOrderPayload.error) || 'Errore sconosciuto');
     }
