@@ -1,0 +1,32 @@
+exports.handler = async function (event) {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method not allowed' };
+  }
+
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const cart = body.cart;
+
+    if (!cart || !Array.isArray(cart.items)) {
+      throw new Error('Invalid input');
+    }
+
+    for (const item of cart.items) {
+      if (item.type !== 'pizza') {
+        item.size = item.size || 'standard';
+        item.dough = item.dough || null;
+        item.ingredients = item.ingredients || [];
+        item.tags = item.tags || [];
+        item.extraPrice = item.extraPrice || 0;
+      }
+
+      if (!item.id || typeof item.price !== 'number') {
+        throw new Error('Invalid input');
+      }
+    }
+
+    return { statusCode: 200, body: JSON.stringify({ cart }) };
+  } catch (error) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid input' }) };
+  }
+};
