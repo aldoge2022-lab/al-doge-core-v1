@@ -1,6 +1,6 @@
 create extension if not exists pgcrypto;
 
-create table if not exists public.menu_items (
+create table public.menu_items (
   id uuid primary key default gen_random_uuid(),
   nome text not null,
   categoria text not null,
