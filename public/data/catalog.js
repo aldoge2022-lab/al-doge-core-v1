@@ -1,6 +1,9 @@
 // public/data/catalog.js
 // Catalogo normalizzato: garantisce che ogni item abbia i campi minimi richiesti dal checkout.
 
+const PRESERVED_KEYS = ['id', 'name', 'type', 'price', 'size', 'dough', 'ingredients', 'ingredienti', 'tags', 'tag', 'active', 'price_cents', 'base_price_cents', 'extraPrice'];
+const normalizeArray = (primary, fallback) => Array.isArray(primary) ? primary : (Array.isArray(fallback) ? fallback : []);
+
 const normalizeItem = (item) => ({
   id: item.id,
   name: item.name,
@@ -8,16 +11,16 @@ const normalizeItem = (item) => ({
   price: Number(item.price) || 0,
   size: item.size || 'standard',
   dough: item.dough || null,
-  ingredients: Array.isArray(item.ingredients) ? item.ingredients : [],
-  ingredienti: Array.isArray(item.ingredienti) ? item.ingredienti : (Array.isArray(item.ingredients) ? item.ingredients : []),
-  tags: Array.isArray(item.tags) ? item.tags : [],
-  tag: Array.isArray(item.tag) ? item.tag : (Array.isArray(item.tags) ? item.tags : []),
+  ingredients: normalizeArray(item.ingredients),
+  ingredienti: normalizeArray(item.ingredienti, item.ingredients),
+  tags: normalizeArray(item.tags),
+  tag: normalizeArray(item.tag, item.tags),
   active: item.active !== false,
   price_cents: Number(item.price_cents ?? item.price) || 0,
   base_price_cents: Number(item.base_price_cents ?? item.price) || 0,
   extraPrice: Number(item.extraPrice) || 0,
   ...Object.keys(item).reduce((acc, k) => {
-    if (!['id','name','type','price','size','dough','ingredients','ingredienti','tags','tag','active','price_cents','base_price_cents','extraPrice'].includes(k)) {
+    if (!PRESERVED_KEYS.includes(k)) {
       acc[k] = item[k];
     }
     return acc;
