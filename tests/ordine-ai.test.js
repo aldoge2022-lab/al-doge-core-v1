@@ -136,6 +136,36 @@ test('returns custom panino reply when message asks for personal panino', async 
   assert.match(JSON.parse(response.body).reply, /Ecco il tuo panino personalizzato:/);
 });
 
+test('returns custom pizza reply when message asks to create a pizza', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Puoi creare una pizza per me?' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.match(JSON.parse(response.body).reply, /Ecco la tua pizza personalizzata:/);
+});
+
+test('returns spicy pizza reply when message asks for a strong pizza', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Voglio una pizza forte' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.match(JSON.parse(response.body).reply, /Pizza forte in arrivo:/);
+});
+
+test('returns light pizza reply when message asks for a light pizza', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Vorrei una pizza leggera' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.match(JSON.parse(response.body).reply, /Pizza leggera creata per te:/);
+});
+
 test('creates checkout session and telegram notification for valid order', async () => {
   process.env.TELEGRAM_BOT_TOKEN = 'token';
   process.env.TELEGRAM_CHAT_ID = 'chat';

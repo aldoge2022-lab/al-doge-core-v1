@@ -308,9 +308,9 @@ Appena confermato, iniziamo la preparazione.`
     }
 
     const lowerMessage = message.toLowerCase();
-    const includesPersonal = lowerMessage.includes("personal");
+    const includesCustomIntent = ["personal", "invent", "inventa", "crea"].some((word) => lowerMessage.includes(word));
 
-    if (lowerMessage.includes("pizza") && includesPersonal) {
+    if (lowerMessage.includes("pizza") && includesCustomIntent) {
       const custom = generatePizza({ richiesta: message, menu: dynamicMenuItems });
       return {
         statusCode: 200,
@@ -320,12 +320,32 @@ Appena confermato, iniziamo la preparazione.`
       };
     }
 
-    if (lowerMessage.includes("panino") && includesPersonal) {
+    if (lowerMessage.includes("panino") && includesCustomIntent) {
       const custom = generatePanino({ richiesta: message, menu: dynamicMenuItems });
       return {
         statusCode: 200,
         body: JSON.stringify({
           reply: `Ecco il tuo panino personalizzato: ${custom.nome} — Ingredienti: ${custom.ingredienti.join(", ")} — Prezzo: €${custom.prezzo}`
+        })
+      };
+    }
+
+    if (lowerMessage.includes("pizza") && (lowerMessage.includes("forte") || lowerMessage.includes("piccante"))) {
+      const custom = generatePizza({ richiesta: message, menu: dynamicMenuItems });
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          reply: `Pizza forte in arrivo: ${custom.nome} — Ingredienti: ${custom.ingredienti.join(", ")} — Prezzo: €${custom.prezzo}`
+        })
+      };
+    }
+
+    if (lowerMessage.includes("pizza") && lowerMessage.includes("leggera")) {
+      const custom = generatePizza({ richiesta: message, menu: dynamicMenuItems });
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          reply: `Pizza leggera creata per te: ${custom.nome} — Ingredienti: ${custom.ingredienti.join(", ")} — Prezzo: €${custom.prezzo}`
         })
       };
     }
