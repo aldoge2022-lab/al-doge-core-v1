@@ -109,6 +109,13 @@
     ]
   };
 
+  // Normalize every section in the catalog to ensure consistent item shape
+  Object.keys(catalog || {}).forEach((section) => {
+    if (Array.isArray(catalog[section])) {
+      catalog[section] = catalog[section].map(normalizeItem);
+    }
+  });
+
   catalog.menu = (catalog.menu || []).map((item) => normalizeItem({
     ...item,
     allergeni: Array.isArray(item.allergeni) ? item.allergeni : [],
