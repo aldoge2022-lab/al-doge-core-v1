@@ -20,7 +20,7 @@ exports.handler = async function (event) {
 
   try {
     const body = JSON.parse(event.body || '{}');
-    const splitCount = Number(body.split_count);
+    const splitCount = body.split_count;
     if (body.mode === 'split') {
       if (!Number.isInteger(splitCount) || !ALLOWED_SPLIT_COUNTS.has(splitCount)) {
         return { statusCode: 400, body: JSON.stringify({ error: 'Invalid split_count' }) };
