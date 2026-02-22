@@ -28,11 +28,12 @@ exports.handler = async function (event) {
 
   try {
     const session = stripeEvent.data.object || {};
-    const session_id = session.metadata?.session_id;
+    const session_id = typeof session.metadata?.session_id === 'string' ? session.metadata.session_id.trim() : '';
     const amount_cents = Number(session.metadata?.amount_cents);
     const payment_intent = session.payment_intent;
+    const MAX_INT32 = 2147483647;
 
-    if (!session_id || !Number.isInteger(amount_cents) || amount_cents <= 0 || !payment_intent) {
+    if (!session_id || !Number.isSafeInteger(amount_cents) || amount_cents <= 0 || amount_cents > MAX_INT32 || !payment_intent) {
       return { statusCode: 200, body: 'Invalid metadata' };
     }
 
