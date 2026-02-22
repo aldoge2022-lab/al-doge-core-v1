@@ -324,8 +324,11 @@ async function alDogeProceedToCheckout(cart) {
       })
     });
     const tableOrderPayload = await tableOrderResponse.json();
-    if (!tableOrderResponse.ok || !tableOrderPayload || !tableOrderPayload.order_id) {
-      throw new Error((tableOrderPayload && tableOrderPayload.error) || 'Ordine tavolo non disponibile');
+    if (!tableOrderResponse.ok) {
+      throw new Error((tableOrderPayload && tableOrderPayload.error) || 'Errore sconosciuto');
+    }
+    if (!tableOrderPayload || !tableOrderPayload.order_id) {
+      throw new Error('Ordine tavolo non disponibile');
     }
     const checkoutResponse = await fetch('/.netlify/functions/create-checkout', {
       method: 'POST',
