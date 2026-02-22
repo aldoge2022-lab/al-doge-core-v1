@@ -153,6 +153,7 @@ test('create-checkout requires valid input contract', async () => {
   });
 
   assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).error, 'Invalid input');
   assert.equal(checkoutCalls.length, 0);
 });
 

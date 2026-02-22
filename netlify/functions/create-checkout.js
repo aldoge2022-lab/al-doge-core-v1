@@ -6,7 +6,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
@@ -22,7 +22,7 @@ exports.handler = async function (event) {
     const session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';
     const mode = body.mode;
 
-    if (!UUID_V4_REGEX.test(session_id) || (mode !== 'full' && mode !== 'split')) {
+    if (!UUID_REGEX.test(session_id) || (mode !== 'full' && mode !== 'split')) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Invalid input' }) };
     }
 
