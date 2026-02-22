@@ -6,7 +6,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-const MIN_PAYMENT_CENTS = 1;
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
@@ -19,30 +19,49 @@ exports.handler = async function (event) {
 
   try {
     const body = JSON.parse(event.body || '{}');
-    const order_id = body.order_id;
-    if (!order_id) {
+    const session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';
+    const mode = body.mode;
+
+    if (!UUID_V4_REGEX.test(session_id) || (mode !== 'full' && mode !== 'split')) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Invalid input' }) };
     }
 
-    const { data: order, error: orderError } = await supabase
-      .from('table_orders')
-      .select('id, table_id, total_cents, paid, status, stripe_session_id')
-      .eq('id', order_id)
+    const { data: tableSession, error: sessionError } = await supabase
+      .from('table_sessions')
+      .select('id, table_id, total_cents, paid_cents, status')
+      .eq('id', session_id)
       .single();
-    if (orderError || !order) {
-      return { statusCode: 404, body: JSON.stringify({ error: 'Order not found' }) };
+    if (sessionError || !tableSession) {
+      return { statusCode: 404, body: JSON.stringify({ error: 'Session not found' }) };
     }
 
-    if (order.paid || order.status !== 'pending') {
-      return { statusCode: 409, body: JSON.stringify({ error: 'Order already processed' }) };
+    const totalCents = Number(tableSession.total_cents);
+    const paidCents = Number(tableSession.paid_cents || 0);
+    const residuo = totalCents - paidCents;
+
+    if (tableSession.status !== 'open') {
+      return { statusCode: 409, body: JSON.stringify({ error: 'Session not open' }) };
     }
-    if (order.stripe_session_id) {
-      return { statusCode: 409, body: JSON.stringify({ error: 'Checkout already created' }) };
+    if (!Number.isInteger(totalCents) || !Number.isInteger(paidCents) || paidCents >= totalCents || residuo <= 0) {
+      return { statusCode: 409, body: JSON.stringify({ error: 'Nothing left to pay' }) };
     }
 
-    const amount = Number(order.total_cents);
-    if (!Number.isInteger(amount) || amount < MIN_PAYMENT_CENTS) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Order total invalid' }) };
+    let amount = residuo;
+    let splitCountForMetadata;
+    if (mode === 'split') {
+      const splitCount = body.split_count;
+      if (!Number.isInteger(splitCount) || splitCount < 2 || splitCount > 20) {
+        return { statusCode: 400, body: JSON.stringify({ error: 'Invalid split_count' }) };
+      }
+      splitCountForMetadata = splitCount;
+      amount = Math.floor(residuo / splitCount);
+      if (amount <= 0) {
+        return { statusCode: 400, body: JSON.stringify({ error: 'Invalid split amount' }) };
+      }
+    }
+
+    if (amount > residuo) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid amount' }) };
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -50,35 +69,21 @@ exports.handler = async function (event) {
       line_items: [{
         price_data: {
           currency: 'eur',
-          product_data: { name: `Conto tavolo ${order.table_id}` },
+          product_data: { name: `Conto tavolo ${tableSession.table_id}` },
           unit_amount: amount
         },
         quantity: 1
       }],
       mode: 'payment',
       metadata: {
-        order_id: String(order.id),
-        table_id: String(order.table_id)
+        session_id: String(tableSession.id),
+        mode: String(mode),
+        ...(splitCountForMetadata ? { split_count: String(splitCountForMetadata) } : {})
       },
       success_url: `${process.env.SITE_URL}/success.html`,
       cancel_url: `${process.env.SITE_URL}/cancel.html`
     });
-
-    const { data: updatedOrder, error: updateError } = await supabase
-      .from('table_orders')
-      .update({ stripe_session_id: session.id })
-      .eq('id', order.id)
-      .eq('paid', false)
-      .eq('status', 'pending')
-      .is('stripe_session_id', null)
-      .select('id')
-      .single();
-
-    if (updateError || !updatedOrder) {
-      return { statusCode: 409, body: JSON.stringify({ error: 'Checkout already created' }) };
-    }
-
-    return { statusCode: 200, body: JSON.stringify({ url: session.url }) };
+    return { statusCode: 200, body: JSON.stringify({ checkout_url: session.url, amount, residuo_attuale: residuo }) };
   } catch (error) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Errore tecnico temporaneo.' }) };
   }
