@@ -45,7 +45,8 @@ exports.handler = async (event) => {
         body: JSON.stringify({ error: 'Missing table_id' })
       };
     }
-    if (typeof table_id !== 'number' || !Number.isFinite(table_id)) {
+    const normalizedTableId = typeof table_id === 'string' ? Number(table_id) : table_id;
+    if (typeof normalizedTableId !== 'number' || !Number.isFinite(normalizedTableId)) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Invalid table_id: must be a number' })
@@ -60,7 +61,7 @@ exports.handler = async (event) => {
     if (!items.length) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'Items array cannot be empty' })
+        body: JSON.stringify({ error: 'Items array empty' })
       };
     }
 
@@ -83,7 +84,7 @@ exports.handler = async (event) => {
       if (!Number.isInteger(qty) || qty < 1) {
         return {
           statusCode: 400,
-          body: JSON.stringify({ error: `Invalid qty for item: ${item.id}` })
+          body: JSON.stringify({ error: `Invalid quantity for item ${item.id}` })
         };
       }
       const unitPrice = catalogPrices.get(item.id);
@@ -97,7 +98,7 @@ exports.handler = async (event) => {
     }
 
     const { error: upsertTableError } = await supabase.from('restaurant_tables').upsert({
-      id: table_id,
+      id: normalizedTableId,
       status: 'open',
       total_cents: 0
     }, {
@@ -109,7 +110,7 @@ exports.handler = async (event) => {
     const { data: order, error: orderError } = await supabase
       .from('table_orders')
       .insert({
-        table_id,
+        table_id: normalizedTableId,
         total_cents,
         paid: false,
         status: 'pending'
@@ -120,7 +121,7 @@ exports.handler = async (event) => {
     if (orderError) throw orderError;
 
     const { error: rpcError } = await supabase.rpc('increment_table_total', {
-      table_id_input: table_id,
+      table_id_input: normalizedTableId,
       amount_input: total_cents
     });
     if (rpcError) throw rpcError;

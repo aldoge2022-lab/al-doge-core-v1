@@ -299,6 +299,7 @@ async function alDogeProceedToCheckout(cart) {
     : [];
 
   const tableNumber = alDogeGetTableNumberFromQuery();
+  const tableId = tableNumber ? Number(tableNumber) : null;
   const splitPersonsInput = document.getElementById('splitPersonsInput');
   const splitToggleButton = document.getElementById('splitToggleBtn');
   const splitPersons = Math.max(1, Math.floor(Number(splitPersonsInput && splitPersonsInput.value) || 2));
@@ -310,13 +311,40 @@ async function alDogeProceedToCheckout(cart) {
     && totalCents > 0
   );
 
+  if (tableNumber) {
+    if (!Number.isFinite(tableId)) {
+      throw new Error('Numero tavolo non valido');
+    }
+    const tableOrderResponse = await fetch('/.netlify/functions/create-table-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        table_id: tableId,
+        items: checkoutItems.map((item) => ({ id: item.id, qty: Math.max(1, Math.floor(Number(item.quantity) || 1)) }))
+      })
+    });
+    const tableOrderPayload = await tableOrderResponse.json();
+    if (!tableOrderResponse.ok || !tableOrderPayload || !tableOrderPayload.order_id) {
+      throw new Error((tableOrderPayload && tableOrderPayload.error) || 'Ordine tavolo non disponibile');
+    }
+    const checkoutResponse = await fetch('/.netlify/functions/create-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: tableOrderPayload.order_id })
+    });
+    const checkoutPayload = await checkoutResponse.json();
+    if (!checkoutResponse.ok || !checkoutPayload || !checkoutPayload.url) {
+      throw new Error((checkoutPayload && (checkoutPayload.error || checkoutPayload.note)) || 'Checkout non disponibile');
+    }
+    window.location.href = checkoutPayload.url;
+    return;
+  }
+
   const response = await fetch('/.netlify/functions/create-checkout', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       cart: checkoutItems,
-      ...(tableNumber ? { table: tableNumber } : {}),
-      ...(tableNumber ? { table_number: tableNumber } : {}),
       ...(splitMode ? {
         split_mode: true,
         split_persons: splitPersons,
