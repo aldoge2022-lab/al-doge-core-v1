@@ -308,7 +308,7 @@ Appena confermato, iniziamo la preparazione.`
     }
 
     const lowerMessage = message.toLowerCase();
-    const includesCustomIntent = ["personal", "invent", "crea"].some((word) => lowerMessage.includes(word));
+    const includesCustomIntent = ["personal", "invent", "inventa", "crea"].some((word) => lowerMessage.includes(word));
 
     if (lowerMessage.includes("pizza") && includesCustomIntent) {
       const custom = generatePizza({ richiesta: message, menu: dynamicMenuItems });
