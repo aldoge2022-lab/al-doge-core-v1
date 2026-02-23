@@ -123,10 +123,10 @@ test('openai-suggestion sends full active menu semantic context to OpenAI prompt
     assert.equal(userText.includes('Nome: Pizza Margherita'), true);
     assert.equal(userText.includes('Ingredienti: pomodoro, mozzarella'), true);
     assert.equal(userText.includes('Categoria: classiche'), true);
-    assert.equal(userText.includes('ID: tonno-cipolla'), true);
-    assert.equal(userText.includes('Nome: Pizza Tonno e Cipolla'), true);
-    assert.equal(userText.includes('Ingredienti: tonno, cipolla'), true);
-    assert.equal(userText.includes('Categoria: '), true);
+    assert.match(
+      userText,
+      /ID: tonno-cipolla[\s\S]*Nome: Pizza Tonno e Cipolla[\s\S]*Ingredienti: tonno, cipolla[\s\S]*Categoria:\s*(?:\n|$)/
+    );
   } finally {
     delete require.cache[suggestionModulePath];
     if (originalSuggestionModule) {
