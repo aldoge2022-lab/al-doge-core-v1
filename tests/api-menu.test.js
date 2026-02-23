@@ -52,6 +52,8 @@ test.beforeEach(() => {
 test('api-menu rejects non-GET', async () => {
   const response = await handler({ httpMethod: 'POST' });
   assert.equal(response.statusCode, 405);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Method not allowed');
 });
 
 test('api-menu returns grouped menu payload', async () => {

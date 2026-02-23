@@ -6,6 +6,8 @@ const { handler } = require('../netlify/functions/telegram-notify');
 test('telegram-notify returns 405 for non-POST requests', async () => {
   const response = await handler({ httpMethod: 'GET' });
   assert.equal(response.statusCode, 405);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Method not allowed');
 });
 
 test('telegram-notify sends message when configured', async () => {
@@ -79,4 +81,6 @@ test('telegram-notify returns 500 when Telegram env is missing', async () => {
   });
 
   assert.equal(response.statusCode, 500);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Telegram non configurato');
 });

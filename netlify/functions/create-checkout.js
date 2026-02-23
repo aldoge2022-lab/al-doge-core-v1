@@ -6,14 +6,26 @@ const ALLOWED_SPLIT_COUNTS = new Set([2, 3, 4, 5, 6, 8]);
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method not allowed' };
+    return {
+      statusCode: 405,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Method not allowed' })
+    };
   }
 
   if (!process.env.SITE_URL) {
-    return { statusCode: 500, body: 'SITE_URL non configurato' };
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'SITE_URL non configurato' })
+    };
   }
   if (!process.env.STRIPE_SECRET_KEY) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'STRIPE_SECRET_KEY non configurata' }) };
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'STRIPE_SECRET_KEY non configurata' })
+    };
   }
 
   try {

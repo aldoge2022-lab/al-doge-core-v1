@@ -69,6 +69,8 @@ test.beforeEach(() => {
 test('open-table-session rejects non-POST', async () => {
   const response = await handler({ httpMethod: 'GET' });
   assert.equal(response.statusCode, 405);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Method not allowed');
 });
 
 test('open-table-session validates table_id', async () => {
