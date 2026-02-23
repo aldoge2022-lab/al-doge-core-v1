@@ -4,7 +4,9 @@ const Module = require('node:module');
 
 let state = {
   rows: [],
-  error: null
+  error: null,
+  selectColumns: null,
+  eqFilter: null
 };
 
 const supabaseMock = {
@@ -13,14 +15,20 @@ const supabaseMock = {
       throw new Error(`Unexpected table: ${table}`);
     }
     return {
-      select: () => ({
-        eq: () => ({
+      select: (columns) => {
+        state.selectColumns = columns;
+        return {
+          eq: (column, value) => {
+            state.eqFilter = [column, value];
+            return {
           order: async () => ({
             data: state.rows,
             error: state.error
           })
-        })
-      })
+            };
+          }
+        };
+      }
     };
   }
 };
@@ -34,7 +42,7 @@ const { handler } = require('../netlify/functions/api-menu');
 Module._load = originalLoad;
 
 test.beforeEach(() => {
-  state = { rows: [], error: null };
+  state = { rows: [], error: null, selectColumns: null, eqFilter: null };
 });
 
 test('api-menu rejects non-GET', async () => {
@@ -75,4 +83,8 @@ test('api-menu returns grouped menu payload', async () => {
   assert.equal(body.bevande.length, 1);
   assert.deepEqual(body.tag, ['classica', 'fresca']);
   assert.deepEqual(body.promozioni['2'], { prezzo_scontato: 1.2 });
+  assert.equal(state.eqFilter[0], 'disponibile');
+  assert.equal(state.eqFilter[1], true);
+  assert.match(state.selectColumns, /\bnome\b/);
+  assert.match(state.selectColumns, /\bpromozioni\b/);
 });
