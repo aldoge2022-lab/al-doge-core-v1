@@ -93,6 +93,15 @@
     addBtn.disabled = false;
   }
 
+
+  function showSuccessMessage(message) {
+    resultEl.textContent = String(message || 'Operazione completata.');
+  }
+
+  function showErrorMessage(message) {
+    resultEl.textContent = String(message || 'Errore tecnico temporaneo.');
+  }
+
   function getPeopleCount(message) {
     const lower = String(message || '').toLowerCase();
     const match = lower.match(/(?:siamo|in|per)\s+(\d{1,2})/) || lower.match(/(\d{1,2})\s+persone?/);
@@ -199,6 +208,39 @@
       if (!payload) {
         resultEl.textContent = 'Errore nella generazione.';
         return;
+      }
+
+      if (payload.action === 'build_custom_item') {
+        try {
+          const buildResponse = await fetch('/.netlify/functions/build-item', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (!buildResponse.ok) {
+            throw new Error('Errore validazione server');
+          }
+
+          const buildData = await parseJsonSafely(buildResponse);
+          if (!buildData || !buildData.cart_item || !window.Cart || typeof window.Cart.addItem !== 'function') {
+            throw new Error('Risposta build-item non valida');
+          }
+
+          window.Cart.addItem(buildData.cart_item);
+          window.dispatchEvent(new Event('cart-updated'));
+          showSuccessMessage('Articolo aggiunto al carrello');
+          if (typeof window.alDogeOpenDrawer === 'function') {
+            window.alDogeOpenDrawer();
+          }
+          addBtn.disabled = true;
+          lastSuggestion = null;
+          return;
+        } catch (err) {
+          console.error(err);
+          showErrorMessage('Errore nella creazione dell’articolo');
+          return;
+        }
       }
 
       const validated = validateSuggestion(payload);
