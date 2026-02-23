@@ -73,7 +73,18 @@
     });
   }
 
-  if (state.data) {
+  function isMenuUnavailable(menu) {
+    if (!menu) return true;
+    const hasCategoryPayload = 'pizze' in menu || 'panini' in menu || 'bevande' in menu;
+    if (!hasCategoryPayload) return !Array.isArray(menu.menu) || menu.menu.length === 0;
+    return (
+      (!menu.pizze || menu.pizze.length === 0) &&
+      (!menu.panini || menu.panini.length === 0) &&
+      (!menu.bevande || menu.bevande.length === 0)
+    );
+  }
+
+  if (!isMenuUnavailable(state.data)) {
     state.size = state.data.size_engine.default;
     renderSizeSelector();
     renderMenu();
