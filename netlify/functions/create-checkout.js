@@ -21,7 +21,11 @@ exports.handler = async function (event) {
     };
   }
   if (!process.env.STRIPE_SECRET_KEY) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'STRIPE_SECRET_KEY non configurata' }) };
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'STRIPE_SECRET_KEY non configurata' })
+    };
   }
 
   try {
