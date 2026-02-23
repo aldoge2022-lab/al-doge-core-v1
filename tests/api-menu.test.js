@@ -6,7 +6,8 @@ let state = {
   rows: [],
   error: null,
   selectColumns: null,
-  eqFilter: null
+  eqFilter: null,
+  throwError: null
 };
 
 const supabaseMock = {
@@ -21,10 +22,13 @@ const supabaseMock = {
           eq: (column, value) => {
             state.eqFilter = [column, value];
             return {
-          order: async () => ({
-            data: state.rows,
-            error: state.error
-          })
+          order: async () => {
+            if (state.throwError) throw state.throwError;
+            return {
+              data: state.rows,
+              error: state.error
+            };
+          }
             };
           }
         };
@@ -42,7 +46,7 @@ const { handler } = require('../netlify/functions/api-menu');
 Module._load = originalLoad;
 
 test.beforeEach(() => {
-  state = { rows: [], error: null, selectColumns: null, eqFilter: null };
+  state = { rows: [], error: null, selectColumns: null, eqFilter: null, throwError: null };
 });
 
 test('api-menu rejects non-GET', async () => {
@@ -87,4 +91,30 @@ test('api-menu returns grouped menu payload', async () => {
   assert.equal(state.eqFilter[1], true);
   assert.match(state.selectColumns, /\bnome\b/);
   assert.match(state.selectColumns, /\bpromozioni\b/);
+});
+
+test('api-menu returns Supabase error details', async () => {
+  state.error = {
+    message: 'permission denied',
+    code: '42501',
+    details: 'for relation menu_items'
+  };
+
+  const response = await handler({ httpMethod: 'GET' });
+  assert.equal(response.statusCode, 500);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.deepEqual(JSON.parse(response.body), {
+    error: 'permission denied',
+    code: '42501',
+    details: 'for relation menu_items'
+  });
+});
+
+test('api-menu returns uncaught error message', async () => {
+  state.throwError = new Error('unexpected boom');
+
+  const response = await handler({ httpMethod: 'GET' });
+  assert.equal(response.statusCode, 500);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.deepEqual(JSON.parse(response.body), { error: 'unexpected boom' });
 });
