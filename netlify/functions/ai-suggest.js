@@ -1,4 +1,5 @@
 const catalog = require('../../data/catalog');
+const aiRules = require('../../config/ai-rules');
 
 const MAX_UNIQUE_ITEMS = 3;
 const MAX_QTY = 5;
@@ -33,6 +34,52 @@ function detectPeople(message) {
   const people = match ? Number(match[1]) : 1;
   if (!Number.isFinite(people) || people < 1) return 1;
   return Math.min(MAX_QTY, Math.max(1, Math.floor(people)));
+}
+
+function extractKnownIngredients() {
+  return [...new Set((catalog.menu || []).flatMap((item) => Array.isArray(item?.ingredienti) ? item.ingredienti : []))];
+}
+
+function inferCategoriaTecnica(ingredientName) {
+  const lower = String(ingredientName || '').toLowerCase();
+  if (/tonno|salmone|acciug|gamber|pesce/.test(lower)) return 'pesce';
+  if (/mozzarella|burrata|bufala|gorgonzola|parmigiano|provola|formaggio/.test(lower)) return 'latticini';
+  if (/salame|prosciutto|salsiccia|carne/.test(lower)) return 'carne';
+  if (/pomodoro|salsa|pesto/.test(lower)) return 'salsa';
+  return 'verdura';
+}
+
+function buildCustomAction(message) {
+  const text = String(message || '').toLowerCase();
+  const wantsCustom = /personal|crea|invent/.test(text);
+  if (!wantsCustom) return null;
+
+  const categoria = text.includes('panino') ? 'panino' : (text.includes('pizza') ? 'pizza' : null);
+  if (!categoria) return null;
+
+  const availableIngredients = extractKnownIngredients();
+  const lowerToOriginal = new Map(availableIngredients.map((ing) => [String(ing).toLowerCase(), ing]));
+  const chosen = availableIngredients.filter((ing) => text.includes(String(ing).toLowerCase()));
+
+  const normalizedIngredients = [...new Set(chosen.map((ing) => lowerToOriginal.get(String(ing).toLowerCase())).filter(Boolean))];
+
+  if (categoria === 'panino') {
+    const hasForbidden = normalizedIngredients.some((ingredient) => aiRules.forbiddenInPanini.includes(inferCategoriaTecnica(ingredient)))
+      || /tonno|salmone|acciug|gamber|pesce/.test(text);
+    if (hasForbidden) {
+      return { action: 'answer', message: 'Nei panini non posso proporre ingredienti di pesce. Vuoi un panino con ingredienti di terra?' };
+    }
+  }
+
+  const limitedIngredients = categoria === 'pizza'
+    ? normalizedIngredients.slice(0, aiRules.maxIngredientsCustomPizza)
+    : normalizedIngredients;
+
+  return {
+    action: 'build_custom_item',
+    categoria,
+    ingredienti: limitedIngredients
+  };
 }
 
 function chooseItems(message) {
@@ -72,45 +119,32 @@ function chooseDrinkUpsell(message, people) {
   };
 }
 
-async function generateCommercialNote(prompt) {
-  if (!process.env.XAI_API_KEY || typeof fetch !== 'function') {
-    return null;
+function validateActionSchema(payload) {
+  if (!payload || typeof payload !== 'object' || typeof payload.action !== 'string') return false;
+
+  if (payload.action === 'answer') {
+    return typeof payload.message === 'string' && payload.message.trim().length > 0;
   }
 
-  const model = process.env.XAI_MODEL || 'grok-4-1-fast-reasoning';
-
-  try {
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.XAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: 'Sei il consulente vendite della pizzeria AL DOGE. Rispondi in massimo 4 righe, tono commerciale, breve e diretto.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
-      })
-    });
-    if (!response.ok) {
-      console.error('xAI HTTP error:', response.status);
-      return null;
-    }
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || null;
-  } catch (error) {
-    console.error('xAI ERROR:', error);
-    return null;
+  if (payload.action === 'build_custom_item') {
+    return ['pizza', 'panino'].includes(payload.categoria)
+      && Array.isArray(payload.ingredienti)
+      && payload.ingredienti.every((it) => typeof it === 'string');
   }
+
+  if (payload.action === 'add_recommended_items') {
+    return Array.isArray(payload.items)
+      && payload.items.every((it) => typeof it?.id === 'string' && Number.isFinite(Number(it?.qty)));
+  }
+
+  return false;
+}
+
+function fallbackAnswer() {
+  return {
+    action: 'answer',
+    message: 'Posso aiutarti a scegliere tra pizza o panino?'
+  };
 }
 
 exports.handler = async (event) => {
@@ -121,26 +155,32 @@ exports.handler = async (event) => {
   try {
     const body = parseJsonBody(event.body);
     if (!body || typeof body.message !== 'string' || !body.message.trim()) return invalidInput();
+
     const message = body.message.trim();
-    const items = chooseItems(message);
-    if (!items.length) return invalidInput();
-    const people = detectPeople(message);
-    const secondarySuggestion = chooseDrinkUpsell(message, people);
-    const itemText = items.map((item) => `${item.id} x${item.qty}`).join(', ');
-    const upsellText = secondarySuggestion ? `${secondarySuggestion.item.id} x${secondarySuggestion.item.qty}` : 'nessuna bevanda';
-    const prompt = `Scrivi una nota commerciale breve in italiano per questa proposta pizzeria. Cliente: "${String(message)}". Proposta: ${itemText}. Upsell bevanda: ${upsellText}.`;
-    const aiNote = await generateCommercialNote(prompt);
-    const finalNote = aiNote
-      || 'Scelta equilibrata perfetta per il tavolo. Aggiungi una bibita e chiudi l\'ordine ora.';
+
+    let decision = buildCustomAction(message);
+
+    if (!decision) {
+      const items = chooseItems(message);
+      if (!items.length) {
+        decision = fallbackAnswer();
+      } else {
+        decision = {
+          action: 'add_recommended_items',
+          items,
+          secondarySuggestion: chooseDrinkUpsell(message, detectPeople(message))
+        };
+      }
+    }
+
+    if (!validateActionSchema(decision)) {
+      decision = fallbackAnswer();
+    }
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        items,
-        note: finalNote,
-        secondarySuggestion
-      })
+      body: JSON.stringify(decision)
     };
   } catch {
     return {
