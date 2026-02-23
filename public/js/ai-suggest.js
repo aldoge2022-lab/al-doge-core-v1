@@ -31,11 +31,11 @@
 
   function validateSuggestion(payload) {
     const activeById = new Map((menuData.menu || []).filter((item) => item.active && item.id).map((item) => [item.id, item]));
-    const items = Array.isArray(payload && payload.items) ? payload.items : [];
+    const items = payload.items;
     return {
       items: items
         .map((it) => ({
-          id: typeof it.id === 'string' && it.id ? it.id : '',
+          id: it.id,
           qty: 1
         }))
         .filter((it) => it.id && activeById.has(it.id)),
