@@ -27,7 +27,17 @@ exports.handler = async function (event) {
       .order('nome', { ascending: true });
 
     if (error) {
-      return { statusCode: 500, body: JSON.stringify({ error: 'Database error' }) };
+      console.error('SUPABASE ERROR:', error);
+
+      return {
+        statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          error: error.message,
+          code: error.code,
+          details: error.details || null
+        })
+      };
     }
 
     const response = {
@@ -57,7 +67,15 @@ exports.handler = async function (event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(response)
     };
-  } catch {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Internal error' }) };
+  } catch (err) {
+    console.error('UNCAUGHT ERROR:', err);
+
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        error: err.message || 'Internal error'
+      })
+    };
   }
 };
