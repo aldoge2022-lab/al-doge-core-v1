@@ -43,6 +43,10 @@
     };
   }
 
+  function showError(message) {
+    resultEl.textContent = message;
+  }
+
   function renderSuggestion(data) {
     const names = new Map((menuData.menu || []).map((item) => [item.id, item.name]));
     const lines = data.items.map((it) => `- ${names.get(it.id) || it.id}`).join('\n');
@@ -142,45 +146,43 @@
     }
 
     try {
-      const response = await fetch('/.netlify/functions/ai-consigli', {
+      const payload = await fetch('/.netlify/functions/openai-suggestion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: message })
-      });
+        body: JSON.stringify({
+          prompt: message,
+          catalog: window.ALDOGE_CATALOG
+        })
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.ok) throw new Error(data.error || 'AI error');
+          return data.suggestion;
+        })
+        .catch((err) => {
+          console.error(err);
+          throw err;
+        });
 
-      const payload = await parseJsonSafely(response);
-      console.log('AI raw response', { status: response.status, payload: payload });
-      if (!response.ok) {
-        resultEl.textContent = (payload && payload.error) || 'Errore nella generazione.';
-        return;
-      }
-      if (!payload) {
-        resultEl.textContent = 'Errore nella generazione.';
-        return;
-      }
-      if (payload.ok === false) {
-        resultEl.textContent = String(payload.error || 'Errore nella generazione.');
-        return;
-      }
-      if (payload.ok !== true || !Array.isArray(payload.items)) {
-        resultEl.textContent = 'Errore nella generazione.';
+      if (!payload || !Array.isArray(payload.items)) {
+        showError('Errore nella generazione.');
         return;
       }
       if (payload.items.length === 0) {
-        resultEl.textContent = 'Nessuna proposta valida.';
+        showError('Nessuna proposta valida.');
         return;
       }
 
       const validated = validateSuggestion(payload);
       if (!validated.items.length) {
-        resultEl.textContent = 'Errore nella generazione.';
+        showError('Errore nella generazione.');
         return;
       }
       lastSuggestion = validated;
       renderSuggestion(validated);
     } catch (error) {
       console.error(error);
-      resultEl.textContent = 'Errore tecnico temporaneo.';
+      showError('Errore nella generazione.');
     }
   }
 
