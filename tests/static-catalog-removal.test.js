@@ -11,7 +11,7 @@ function read(relativePath) {
 
 test('index.html no longer loads static catalog script', () => {
   const html = read('public/index.html');
-  assert.equal(html.includes('/data/catalog.js'), false);
+  assert.ok(!html.includes('/data/catalog.js'));
 });
 
 test('public/data directory is removed', () => {
@@ -20,7 +20,7 @@ test('public/data directory is removed', () => {
 
 test('menu-render loads menu only from api-menu endpoint without static fallback', () => {
   const script = read('public/js/menu-render.js');
-  assert.equal(script.includes("fetch('/.netlify/functions/api-menu')"), true);
-  assert.equal(script.includes('window.ALDOGE_CATALOG ||'), false);
-  assert.equal(script.includes('/data/catalog.js'), false);
+  assert.ok(script.includes("fetch('/.netlify/functions/api-menu')"));
+  assert.ok(!script.includes('window.ALDOGE_CATALOG ||'));
+  assert.ok(!script.includes('/data/catalog.js'));
 });

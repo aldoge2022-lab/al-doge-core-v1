@@ -107,7 +107,7 @@
 
     state.data.menu = [
       ...(Array.isArray(payload.pizze) ? payload.pizze : []).map((item) => toCatalogItem(item, 'pizza')),
-      ...(Array.isArray(payload.panini) ? payload.panini : []).map((item) => toCatalogItem(item, 'pizza'))
+      ...(Array.isArray(payload.panini) ? payload.panini : []).map((item) => toCatalogItem(item, 'panino'))
     ];
     state.data.drinks = (Array.isArray(payload.bevande) ? payload.bevande : []).map((item) => toCatalogItem(item, 'drink'));
     state.data.extras = {};
