@@ -46,6 +46,8 @@ test.beforeEach(() => {
 test('get-table-sessions rejects non-GET', async () => {
   const response = await handler({ httpMethod: 'POST' });
   assert.equal(response.statusCode, 405);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Method not allowed');
 });
 
 test('get-table-sessions returns mapped rows with residual cents', async () => {

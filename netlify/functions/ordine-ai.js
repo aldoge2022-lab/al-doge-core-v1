@@ -154,14 +154,26 @@ async function sendTelegramNotification(message) {
 
 exports.handler = async function (event) {
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method not allowed" };
+    return {
+      statusCode: 405,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "Method not allowed" })
+    };
   }
 
   if (!process.env.SITE_URL) {
-    return { statusCode: 500, body: "SITE_URL non configurato" };
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "SITE_URL non configurato" })
+    };
   }
   if (!process.env.STRIPE_SECRET_KEY) {
-    return { statusCode: 500, body: "STRIPE_SECRET_KEY non configurata" };
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "STRIPE_SECRET_KEY non configurata" })
+    };
   }
 
   try {
@@ -171,7 +183,11 @@ exports.handler = async function (event) {
 
     if (rawItems && rawItems.length) {
       if (rawItems.length > MAX_CHECKOUT_ITEMS) {
-        return { statusCode: 400, body: "Invalid input" };
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Invalid input" })
+        };
       }
 
       const drinkIds = new Set((catalog.drinks || []).map((drink) => drink.id));
@@ -202,7 +218,11 @@ exports.handler = async function (event) {
         if (item.type === "pizza") {
           const unitAmount = pizzaUnitAmount(item, pizzasById);
           if (unitAmount === null || unitAmount < MIN_PAYMENT_CENTS) {
-            return { statusCode: 400, body: "Invalid input" };
+            return {
+              statusCode: 400,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "Invalid input" })
+            };
           }
           const pizza = pizzasById.get(item.id);
           line_items.push({
@@ -217,7 +237,11 @@ exports.handler = async function (event) {
         }
         const drink = drinksById.get(item.id);
         if (!drink) {
-          return { statusCode: 400, body: "Invalid input" };
+          return {
+            statusCode: 400,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Invalid input" })
+          };
         }
         line_items.push({
           price_data: {
@@ -245,7 +269,11 @@ exports.handler = async function (event) {
     const dynamicMenuByName = new Map(dynamicMenuItems.map((item) => [item.name, item]));
 
     if (!message || message.length > MAX_INPUT_LENGTH) {
-      return { statusCode: 400, body: "Invalid input" };
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Invalid input" })
+      };
     }
 
     const hasPhone = containsPhone(message);

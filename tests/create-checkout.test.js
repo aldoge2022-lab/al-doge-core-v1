@@ -55,6 +55,8 @@ test.beforeEach(() => {
 test('create-checkout rejects non-POST', async () => {
   const response = await handler({ httpMethod: 'GET' });
   assert.equal(response.statusCode, 405);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Method not allowed');
 });
 
 test('create-checkout accepts only session_id/mode and uses db residuo for full payment', async () => {

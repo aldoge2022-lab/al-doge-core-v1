@@ -93,7 +93,8 @@ test('returns 405 for non-POST requests', async () => {
   const response = await handler({ httpMethod: 'GET' });
 
   assert.equal(response.statusCode, 405);
-  assert.equal(response.body, 'Method not allowed');
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Method not allowed');
 });
 
 test('returns 400 for empty message', async () => {
@@ -103,7 +104,8 @@ test('returns 400 for empty message', async () => {
   });
 
   assert.equal(response.statusCode, 400);
-  assert.equal(response.body, 'Invalid input');
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Invalid input');
 });
 
 test('returns conversational reply when no order intent/phone is found', async () => {
@@ -211,7 +213,8 @@ test('returns 400 for cart items payload with invalid product id', async () => {
   });
 
   assert.equal(response.statusCode, 400);
-  assert.equal(response.body, 'Invalid input');
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Invalid input');
 });
 
 test('uses discounted menu_items price for AI order parsing', async () => {

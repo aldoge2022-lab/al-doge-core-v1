@@ -16,7 +16,11 @@ function normalizeItem(item) {
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'GET') {
-    return { statusCode: 405, body: 'Method not allowed' };
+    return {
+      statusCode: 405,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Method not allowed' })
+    };
   }
 
   try {

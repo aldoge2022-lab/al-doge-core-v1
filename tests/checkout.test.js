@@ -3,6 +3,13 @@ const assert = require('node:assert/strict');
 
 const { handler } = require('../netlify/functions/checkout');
 
+test('checkout rejects non-POST', async () => {
+  const response = await handler({ httpMethod: 'GET' });
+  assert.equal(response.statusCode, 405);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Method not allowed');
+});
+
 test('checkout normalizes non-pizza items and accepts numeric price', async () => {
   const response = await handler({
     httpMethod: 'POST',

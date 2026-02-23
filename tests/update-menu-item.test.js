@@ -40,6 +40,13 @@ test.beforeEach(() => {
   };
 });
 
+test('update-menu-item rejects non-POST requests', async () => {
+  const response = await handler({ httpMethod: 'GET' });
+  assert.equal(response.statusCode, 405);
+  assert.equal(response.headers['Content-Type'], 'application/json');
+  assert.equal(JSON.parse(response.body).error, 'Method not allowed');
+});
+
 test('update-menu-item rejects unauthorized requests', async () => {
   const response = await handler({ httpMethod: 'POST', headers: {}, body: '{}' });
   assert.equal(response.statusCode, 401);
