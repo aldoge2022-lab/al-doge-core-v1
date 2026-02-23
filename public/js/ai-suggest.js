@@ -30,66 +30,23 @@
   }
 
   function validateSuggestion(payload) {
-    const activeById = new Map(
-      (menuData.menu || [])
-        .filter((item) => item.active && item.id)
-        .map((item) => [item.id, item])
-    );
-
-    if (payload && payload.action === 'answer') {
-      return {
-        action: 'answer',
-        message: String(payload.message || 'Posso aiutarti a scegliere tra pizza o panino?'),
-        items: []
-      };
-    }
-
-    if (payload && payload.action === 'build_custom_item') {
-      return {
-        action: 'build_custom_item',
-        categoria: String(payload.categoria || ''),
-        ingredienti: Array.isArray(payload.ingredienti) ? payload.ingredienti : [],
-        items: []
-      };
-    }
-
-    const items = Array.isArray(payload.items) ? payload.items : [];
+    const activeById = new Map((menuData.menu || []).filter((item) => item.active && item.id).map((item) => [item.id, item]));
+    const items = payload.items;
     return {
-      action: 'add_recommended_items',
       items: items
-        .filter((it) => activeById.has(it.id))
         .map((it) => ({
           id: it.id,
-          qty: Math.max(1, Math.min(5, Number(it.qty) || 1))
+          qty: 1
         }))
+        .filter((it) => it.id && activeById.has(it.id)),
+      note: typeof payload.note === 'string' ? payload.note : ''
     };
   }
 
   function renderSuggestion(data) {
-    if (data.action === 'answer') {
-      resultEl.textContent = data.message;
-      addBtn.disabled = true;
-      return;
-    }
-
-    if (data.action === 'build_custom_item') {
-      resultEl.textContent = `Azione: crea ${data.categoria} personalizzata con ingredienti: ${(data.ingredienti || []).join(', ') || 'nessuno specificato'}`;
-      addBtn.disabled = true;
-      return;
-    }
-
-    if (!data.items.length) {
-      resultEl.textContent = 'Nessuna proposta valida.';
-      addBtn.disabled = true;
-      return;
-    }
-
     const names = new Map((menuData.menu || []).map((item) => [item.id, item.name]));
-    const lines = data.items.map((it) => `- ${names.get(it.id) || it.id} × ${it.qty}`).join('\n');
-    const secondaryLine = data.secondarySuggestion && data.secondarySuggestion.item
-      ? `\nSuggerimento extra (${data.secondarySuggestion.kind}): ${(names.get(data.secondarySuggestion.item.id) || data.secondarySuggestion.item.id)} × ${data.secondarySuggestion.item.qty} — ${data.secondarySuggestion.cta || 'Aggiungi'}`
-      : '';
-    resultEl.textContent = `Proposta:\n${lines}${secondaryLine}`;
+    const lines = data.items.map((it) => `- ${names.get(it.id) || it.id}`).join('\n');
+    resultEl.textContent = `Proposta:\n${lines}${data.note ? `\n${data.note}` : ''}`;
     addBtn.disabled = false;
   }
 
@@ -185,13 +142,14 @@
     }
 
     try {
-      const response = await fetch('/.netlify/functions/ai-suggest', {
+      const response = await fetch('/.netlify/functions/ai-consigli', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: message })
+        body: JSON.stringify({ prompt: message })
       });
 
       const payload = await parseJsonSafely(response);
+      console.log('AI raw response', { status: response.status, payload: payload });
       if (!response.ok) {
         resultEl.textContent = (payload && payload.error) || 'Errore nella generazione.';
         return;
@@ -200,11 +158,26 @@
         resultEl.textContent = 'Errore nella generazione.';
         return;
       }
+      if (payload.ok === false) {
+        resultEl.textContent = String(payload.error || 'Errore nella generazione.');
+        return;
+      }
+      if (payload.ok !== true || !Array.isArray(payload.items)) {
+        resultEl.textContent = 'Errore nella generazione.';
+        return;
+      }
+      if (payload.items.length === 0) {
+        resultEl.textContent = 'Nessuna proposta valida.';
+        return;
+      }
 
       const validated = validateSuggestion(payload);
-      validated.secondarySuggestion = validated.action === 'add_recommended_items' ? (payload.secondarySuggestion || null) : null;
+      if (!validated.items.length) {
+        resultEl.textContent = 'Errore nella generazione.';
+        return;
+      }
       lastSuggestion = validated;
-      renderSuggestion(validated.action === 'add_recommended_items' ? applyPostSuggestionConversionFlow(validated, message) : validated);
+      renderSuggestion(validated);
     } catch (error) {
       console.error(error);
       resultEl.textContent = 'Errore tecnico temporaneo.';
@@ -240,22 +213,6 @@
         });
       }
     });
-
-    const secondary = lastSuggestion.secondarySuggestion;
-    if (secondary && secondary.item && (secondary.kind === 'beverage' || secondary.kind === 'premium')) {
-      const product = productsById.get(secondary.item.id);
-      if (product) {
-        for (let i = 0; i < secondary.item.qty; i += 1) {
-          window.Cart.addItem({
-            id: product.id,
-            name: product.name,
-            size: size,
-            unit_price_cents: getUnitPrice(product)
-          });
-        }
-        resultEl.textContent = `${resultEl.textContent}\n✓ ${secondary.cta || 'Suggerimento extra applicato'}`;
-      }
-    }
 
     window.dispatchEvent(new Event('cart-updated'));
     if (typeof window.alDogeOpenDrawer === 'function') {

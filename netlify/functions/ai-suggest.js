@@ -1,85 +1,30 @@
 const catalog = require('../../data/catalog');
-const aiRules = require('../../config/ai-rules');
-
 const MAX_UNIQUE_ITEMS = 3;
-const MAX_QTY = 5;
 
-function methodNotAllowed() {
+function jsonResponse(statusCode, payload) {
   return {
-    statusCode: 405,
+    statusCode,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ error: 'METHOD_NOT_ALLOWED' })
+    body: JSON.stringify(payload)
   };
 }
 
-function invalidInput() {
-  return {
-    statusCode: 400,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ error: 'INVALID_INPUT' })
-  };
+function errorResponse(statusCode, code, error) {
+  return jsonResponse(statusCode, { ok: false, code, error });
+}
+
+function successResponse(items, note) {
+  const payload = { ok: true, items };
+  if (note) payload.note = note;
+  return jsonResponse(200, payload);
 }
 
 function parseJsonBody(rawBody) {
   try {
-    return JSON.parse(rawBody || '{}');
+    return JSON.parse(rawBody);
   } catch {
     return null;
   }
-}
-
-function detectPeople(message) {
-  const text = String(message || '').toLowerCase();
-  const match = text.match(/(?:siamo|in|per)\s+(\d{1,2})/) || text.match(/(\d{1,2})\s+persone?/);
-  const people = match ? Number(match[1]) : 1;
-  if (!Number.isFinite(people) || people < 1) return 1;
-  return Math.min(MAX_QTY, Math.max(1, Math.floor(people)));
-}
-
-function extractKnownIngredients() {
-  return [...new Set((catalog.menu || []).flatMap((item) => Array.isArray(item?.ingredienti) ? item.ingredienti : []))];
-}
-
-function inferCategoriaTecnica(ingredientName) {
-  const lower = String(ingredientName || '').toLowerCase();
-  if (/tonno|salmone|acciug|gamber|pesce/.test(lower)) return 'pesce';
-  if (/mozzarella|burrata|bufala|gorgonzola|parmigiano|provola|formaggio/.test(lower)) return 'latticini';
-  if (/salame|prosciutto|salsiccia|carne/.test(lower)) return 'carne';
-  if (/pomodoro|salsa|pesto/.test(lower)) return 'salsa';
-  return 'verdura';
-}
-
-function buildCustomAction(message) {
-  const text = String(message || '').toLowerCase();
-  const wantsCustom = /personal|crea|invent/.test(text);
-  if (!wantsCustom) return null;
-
-  const categoria = text.includes('panino') ? 'panino' : (text.includes('pizza') ? 'pizza' : null);
-  if (!categoria) return null;
-
-  const availableIngredients = extractKnownIngredients();
-  const lowerToOriginal = new Map(availableIngredients.map((ing) => [String(ing).toLowerCase(), ing]));
-  const chosen = availableIngredients.filter((ing) => text.includes(String(ing).toLowerCase()));
-
-  const normalizedIngredients = [...new Set(chosen.map((ing) => lowerToOriginal.get(String(ing).toLowerCase())).filter(Boolean))];
-
-  if (categoria === 'panino') {
-    const hasForbidden = normalizedIngredients.some((ingredient) => aiRules.forbiddenInPanini.includes(inferCategoriaTecnica(ingredient)))
-      || /tonno|salmone|acciug|gamber|pesce/.test(text);
-    if (hasForbidden) {
-      return { action: 'answer', message: 'Nei panini non posso proporre ingredienti di pesce. Vuoi un panino con ingredienti di terra?' };
-    }
-  }
-
-  const limitedIngredients = categoria === 'pizza'
-    ? normalizedIngredients.slice(0, aiRules.maxIngredientsCustomPizza)
-    : normalizedIngredients;
-
-  return {
-    action: 'build_custom_item',
-    categoria,
-    ingredienti: limitedIngredients
-  };
 }
 
 function chooseItems(message) {
@@ -89,7 +34,6 @@ function chooseItems(message) {
   const fallback = activePizzas[0];
   if (!fallback) return [];
 
-  const people = detectPeople(message);
   const ids = [];
   if (/diavola|piccante|spicy/.test(text) && byId.has('diavola')) ids.push('diavola');
   if (/margherita|classica/.test(text) && byId.has('margherita')) ids.push('margherita');
@@ -98,97 +42,48 @@ function chooseItems(message) {
 
   return Array.from(new Set(ids))
     .slice(0, MAX_UNIQUE_ITEMS)
-    .map((id, index) => ({
-      id,
-      qty: Math.max(1, Math.min(MAX_QTY, index === 0 ? people : Math.ceil(people / 2)))
+    .map((id) => byId.get(id))
+    .filter(Boolean)
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      price_cents: Number(item.base_price_cents ?? item.price_cents ?? item.price) || 0
     }));
 }
 
-function chooseDrinkUpsell(message, people) {
-  const drinks = (catalog.drinks || []).filter((drink) => drink && drink.active);
-  if (!drinks.length) return null;
-  const text = String(message || '').toLowerCase();
-  const preferred = /diavola|piccante|spicy/.test(text)
-    ? drinks.find((drink) => /birra/i.test(drink.name))
-    : drinks.find((drink) => /acqua/i.test(drink.name));
-  const drink = preferred || drinks[0];
-  return {
-    kind: 'beverage',
-    item: { id: drink.id, qty: Math.max(1, Math.min(MAX_QTY, Math.ceil(people / 2))) },
-    cta: 'Completa con bevande'
-  };
-}
-
-function validateActionSchema(payload) {
-  if (!payload || typeof payload !== 'object' || typeof payload.action !== 'string') return false;
-
-  if (payload.action === 'answer') {
-    return typeof payload.message === 'string' && payload.message.trim().length > 0;
-  }
-
-  if (payload.action === 'build_custom_item') {
-    return ['pizza', 'panino'].includes(payload.categoria)
-      && Array.isArray(payload.ingredienti)
-      && payload.ingredienti.every((it) => typeof it === 'string');
-  }
-
-  if (payload.action === 'add_recommended_items') {
-    return Array.isArray(payload.items)
-      && payload.items.every((it) => typeof it?.id === 'string' && Number.isFinite(Number(it?.qty)));
-  }
-
-  return false;
-}
-
-function fallbackAnswer() {
-  return {
-    action: 'answer',
-    message: 'Posso aiutarti a scegliere tra pizza o panino?'
-  };
-}
-
 exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') {
-    return methodNotAllowed();
-  }
-
   try {
+    if (event.httpMethod !== 'POST') {
+      return errorResponse(405, 'METHOD_NOT_ALLOWED', 'Metodo non consentito');
+    }
+
+    if (!event || typeof event.body !== 'string') {
+      return errorResponse(400, 'INVALID_INPUT', 'Payload non valido');
+    }
+
     const body = parseJsonBody(event.body);
-    if (!body || typeof body.message !== 'string' || !body.message.trim()) return invalidInput();
-
-    const message = body.message.trim();
-
-    let decision = buildCustomAction(message);
-
-    if (!decision) {
-      const items = chooseItems(message);
-      if (!items.length) {
-        decision = fallbackAnswer();
-      } else {
-        decision = {
-          action: 'add_recommended_items',
-          items,
-          secondarySuggestion: chooseDrinkUpsell(message, detectPeople(message))
-        };
-      }
+    if (!body) {
+      return errorResponse(400, 'INVALID_INPUT', 'JSON non valido');
     }
 
-    if (!validateActionSchema(decision)) {
-      decision = fallbackAnswer();
+    const prompt = typeof body.prompt === 'string' && body.prompt.trim()
+      ? body.prompt.trim()
+      : (typeof body.message === 'string' ? body.message.trim() : '');
+    if (!prompt) {
+      return errorResponse(400, 'INVALID_INPUT', 'Il campo prompt è obbligatorio');
     }
 
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(decision)
-    };
-  } catch {
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        error: 'INTERNAL_ERROR'
-      })
-    };
+    const hasOpenAiKey = typeof process.env.OPENAI_API_KEY === 'string' && process.env.OPENAI_API_KEY.trim().length > 0;
+    let note = '';
+    if (!hasOpenAiKey) {
+      console.error('OPENAI_API_KEY mancante: uso fallback deterministico locale');
+      note = 'Motore AI in fallback locale';
+    }
+
+    const items = chooseItems(prompt);
+    return successResponse(Array.isArray(items) ? items : [], note);
+  } catch (error) {
+    console.error('ai-suggest handler error:', error);
+    return errorResponse(500, 'INTERNAL_ERROR', 'Errore tecnico temporaneo');
   }
 };
