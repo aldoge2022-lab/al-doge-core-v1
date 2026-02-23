@@ -76,7 +76,7 @@
   function isMenuUnavailable(menu) {
     if (!menu) return true;
     const hasCategoryPayload = 'pizze' in menu || 'panini' in menu || 'bevande' in menu;
-    if (!hasCategoryPayload) return false;
+    if (!hasCategoryPayload) return !Array.isArray(menu.menu) || menu.menu.length === 0;
     return (
       (!menu.pizze || menu.pizze.length === 0) &&
       (!menu.panini || menu.panini.length === 0) &&
