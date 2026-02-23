@@ -35,3 +35,30 @@ test('openai-suggestion returns unified suggestion payload', async () => {
   assert.equal(typeof body.suggestion.note, 'string');
   assert.equal(body.suggestion.note, '');
 });
+
+test('openai-suggestion emits full AI diagnostic logging block', async () => {
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args);
+
+  try {
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ prompt: 'Fammi una pizza piccante' })
+    });
+    assert.equal(response.statusCode, 200);
+  } finally {
+    console.log = originalLog;
+  }
+
+  const headers = logs.map((args) => args[0]);
+  assert.equal(headers.includes('=== AI DEBUG START ==='), true);
+  assert.equal(headers.includes('PROMPT:'), true);
+  assert.equal(headers.includes('AVAILABLE IDS:'), true);
+  assert.equal(headers.includes('OPENAI RAW CONTENT:'), true);
+  assert.equal(headers.includes('PARSED IDS:'), true);
+  assert.equal(headers.includes('VALID IDS AFTER FILTER:'), true);
+  assert.equal(headers.includes('FALLBACK IDS:'), true);
+  assert.equal(headers.includes('FINAL IDS USED:'), true);
+  assert.equal(headers.includes('=== AI DEBUG END ==='), true);
+});

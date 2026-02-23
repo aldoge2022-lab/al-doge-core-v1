@@ -51,7 +51,9 @@ function parseIdsFromOpenAIText(text) {
 
 async function idsFromOpenAI(prompt, activeItems) {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || !String(apiKey).trim()) return [];
+  if (!apiKey || !String(apiKey).trim()) {
+    return { content: '', parsed: { ids: [] } };
+  }
 
   const allowedIds = activeItems.map((item) => item.id);
   const client = new OpenAI({ apiKey });
@@ -80,7 +82,10 @@ async function idsFromOpenAI(prompt, activeItems) {
     ? response.output_text
     : '';
 
-  return parseIdsFromOpenAIText(outputText);
+  return {
+    content: outputText,
+    parsed: { ids: parseIdsFromOpenAIText(outputText) }
+  };
 }
 
 function sanitizeIds(candidateIds, activeItems) {
@@ -122,18 +127,33 @@ exports.handler = async (event) => {
       });
     }
 
-    let selectedIds = [];
+    const availableIds = activeItems.map((item) => item.id);
+    let content = '';
+    let parsed = null;
+    let validIds = [];
     try {
-      selectedIds = sanitizeIds(await idsFromOpenAI(prompt.trim(), activeItems), activeItems);
+      const aiResult = await idsFromOpenAI(prompt.trim(), activeItems);
+      content = aiResult?.content || '';
+      parsed = aiResult?.parsed || null;
+      validIds = sanitizeIds(parsed?.ids, activeItems);
     } catch (error) {
       console.error('OpenAI suggestion failed, using fallback:', error.message || error);
     }
 
-    if (!selectedIds.length) {
-      selectedIds = sanitizeIds(fallbackIdsFromPrompt(prompt.trim(), activeItems), activeItems);
-    }
+    const fallbackIds = sanitizeIds(fallbackIdsFromPrompt(prompt.trim(), activeItems), activeItems);
+    const guaranteedIds = validIds.length ? validIds : fallbackIds;
 
-    const items = selectedIds.map((id) => ({ id, qty: 1 }));
+    console.log('=== AI DEBUG START ===');
+    console.log('PROMPT:', prompt);
+    console.log('AVAILABLE IDS:', availableIds);
+    console.log('OPENAI RAW CONTENT:', content);
+    console.log('PARSED IDS:', parsed?.ids);
+    console.log('VALID IDS AFTER FILTER:', validIds);
+    console.log('FALLBACK IDS:', fallbackIds);
+    console.log('FINAL IDS USED:', guaranteedIds);
+    console.log('=== AI DEBUG END ===');
+
+    const items = guaranteedIds.map((id) => ({ id, qty: 1 }));
 
     return jsonResponse(200, {
       ok: true,
