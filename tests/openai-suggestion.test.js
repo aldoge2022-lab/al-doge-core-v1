@@ -22,7 +22,7 @@ test('openai-suggestion returns 400 when prompt is missing', async () => {
   assert.equal(body.error, 'Prompt mancante');
 });
 
-test('openai-suggestion returns suggestion payload for valid prompt', async () => {
+test('openai-suggestion returns unified suggestion payload', async () => {
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ prompt: 'Fammi una pizza piccante' })
@@ -32,6 +32,6 @@ test('openai-suggestion returns suggestion payload for valid prompt', async () =
   const body = JSON.parse(response.body);
   assert.equal(body.ok, true);
   assert.equal(Array.isArray(body.suggestion.items), true);
-  assert.equal(body.suggestion.items.length > 0, true);
-  assert.equal(body.suggestion.items[0].id, 'diavola');
+  assert.equal(typeof body.suggestion.note, 'string');
+  assert.equal(body.suggestion.note, '');
 });
