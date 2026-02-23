@@ -1,16 +1,22 @@
 const supabase = require('./_supabase');
 
+function toIntegerCents(value, alreadyInCents) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return alreadyInCents ? Math.round(numeric) : Math.round(numeric * 100);
+}
+
 function normalizeItem(item) {
   return {
-    id: item.id,
-    nome: item.nome,
-    categoria: item.categoria,
-    prezzo: Number(item.prezzo),
+    id: String(item.id),
+    nome: String(item.nome),
+    categoria: String(item.categoria || '').toLowerCase(),
+    prezzo_cents: item.prezzo_cents != null
+      ? toIntegerCents(item.prezzo_cents, true)
+      : toIntegerCents(item.prezzo, false),
     ingredienti: Array.isArray(item.ingredienti) ? item.ingredienti : [],
-    allergeni: Array.isArray(item.allergeni) ? item.allergeni : [],
-    tag: Array.isArray(item.tag) ? item.tag : [],
-    varianti: item.varianti && typeof item.varianti === 'object' ? item.varianti : {},
-    promozioni: item.promozioni && typeof item.promozioni === 'object' ? item.promozioni : {}
+    disponibile: item.disponibile !== false,
+    tag: Array.isArray(item.tag) ? item.tag : []
   };
 }
 
@@ -26,7 +32,7 @@ exports.handler = async function (event) {
   try {
     const { data, error } = await supabase
       .from('menu_items')
-      .select('id, nome, categoria, prezzo, ingredienti, allergeni, tag, varianti, promozioni')
+      .select('id, nome, categoria, prezzo, prezzo_cents, ingredienti, disponibile, tag')
       .eq('disponibile', true)
       .order('nome', { ascending: true });
 
@@ -45,26 +51,10 @@ exports.handler = async function (event) {
     }
 
     const response = {
-      pizze: [],
+      pizze: (data || []).map(normalizeItem),
       panini: [],
-      bevande: [],
-      tag: [],
-      varianti: {},
-      promozioni: {}
+      bevande: []
     };
-    const tags = new Set();
-
-    for (const row of data || []) {
-      const item = normalizeItem(row);
-      if (item.categoria === 'pizza') response.pizze.push(item);
-      if (item.categoria === 'panino') response.panini.push(item);
-      if (item.categoria === 'bevanda') response.bevande.push(item);
-      for (const t of item.tag) tags.add(String(t));
-      if (Object.keys(item.varianti).length) response.varianti[item.id] = item.varianti;
-      if (Object.keys(item.promozioni).length) response.promozioni[item.id] = item.promozioni;
-    }
-
-    response.tag = Array.from(tags).sort((a, b) => a.localeCompare(b));
 
     return {
       statusCode: 200,

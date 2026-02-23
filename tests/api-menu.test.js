@@ -22,13 +22,13 @@ const supabaseMock = {
           eq: (column, value) => {
             state.eqFilter = [column, value];
             return {
-          order: async () => {
-            if (state.throwError) throw state.throwError;
-            return {
-              data: state.rows,
-              error: state.error
-            };
-          }
+              order: async () => {
+                if (state.throwError) throw state.throwError;
+                return {
+                  data: state.rows,
+                  error: state.error
+                };
+              }
             };
           }
         };
@@ -56,43 +56,49 @@ test('api-menu rejects non-GET', async () => {
   assert.equal(JSON.parse(response.body).error, 'Method not allowed');
 });
 
-test('api-menu returns grouped menu payload', async () => {
+test('api-menu returns normalized pizza payload with prezzo_cents integer', async () => {
   state.rows = [
     {
-      id: '1',
-      nome: 'Pizza Margherita',
-      categoria: 'pizza',
-      prezzo: 7,
-      ingredienti: ['pomodoro'],
-      allergeni: [],
-      tag: ['classica'],
-      varianti: { impasto: ['normale'] },
-      promozioni: {}
+      id: 'margherita',
+      nome: 'Margherita',
+      categoria: 'classiche',
+      prezzo: 6,
+      ingredienti: ['pomodoro', 'mozzarella'],
+      disponibile: true,
+      tag: ['classica']
     },
     {
-      id: '2',
-      nome: 'Acqua',
-      categoria: 'bevanda',
-      prezzo: 1.5,
-      ingredienti: [],
-      allergeni: [],
-      tag: ['fresca'],
-      varianti: {},
-      promozioni: { prezzo_scontato: 1.2 }
+      id: 'diavola',
+      nome: 'Diavola',
+      categoria: 'speciali',
+      prezzo_cents: 850,
+      ingredienti: ['pomodoro', 'mozzarella', 'salame piccante'],
+      disponibile: true,
+      tag: []
     }
   ];
 
   const response = await handler({ httpMethod: 'GET' });
   assert.equal(response.statusCode, 200);
   const body = JSON.parse(response.body);
-  assert.equal(body.pizze.length, 1);
-  assert.equal(body.bevande.length, 1);
-  assert.deepEqual(body.tag, ['classica', 'fresca']);
-  assert.deepEqual(body.promozioni['2'], { prezzo_scontato: 1.2 });
+
+  assert.equal(body.pizze.length, 2);
+  assert.deepEqual(body.pizze[0], {
+    id: 'margherita',
+    nome: 'Margherita',
+    categoria: 'classiche',
+    prezzo_cents: 600,
+    ingredienti: ['pomodoro', 'mozzarella'],
+    disponibile: true,
+    tag: ['classica']
+  });
+  assert.equal(body.pizze[1].prezzo_cents, 850);
+  assert.deepEqual(body.panini, []);
+  assert.deepEqual(body.bevande, []);
   assert.equal(state.eqFilter[0], 'disponibile');
   assert.equal(state.eqFilter[1], true);
-  assert.match(state.selectColumns, /\bnome\b/);
-  assert.match(state.selectColumns, /\bpromozioni\b/);
+  assert.match(state.selectColumns, /\bprezzo_cents\b/);
+  assert.match(state.selectColumns, /\btag\b/);
 });
 
 test('api-menu returns Supabase error details', async () => {
