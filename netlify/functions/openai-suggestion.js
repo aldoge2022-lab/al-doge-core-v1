@@ -55,7 +55,12 @@ async function idsFromOpenAI(prompt, activeItems) {
     return { content: '', parsed: { ids: [] } };
   }
 
-  const allowedIds = activeItems.map((item) => item.id);
+  const menuForPrompt = activeItems.map((item) => ({
+    id: item.id,
+    name: item.name,
+    ingredients: item.ingredients || '',
+    category: item.category || ''
+  }));
   const client = new OpenAI({ apiKey });
   const response = await client.responses.create({
     model: 'gpt-4o-mini',
@@ -72,7 +77,17 @@ async function idsFromOpenAI(prompt, activeItems) {
         role: 'user',
         content: [{
           type: 'input_text',
-          text: `Prompt cliente: ${prompt}\nID consentiti: ${allowedIds.join(', ')}`
+          text: `
+Prompt cliente: ${prompt}
+
+Menu attivo:
+${menuForPrompt.map((item) =>
+`ID: ${item.id}
+Nome: ${item.name}
+Ingredienti: ${item.ingredients}
+Categoria: ${item.category}
+`).join('\n')}
+`
         }]
       }
     ]

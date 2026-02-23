@@ -62,3 +62,85 @@ test('openai-suggestion emits full AI diagnostic logging block', async () => {
   assert.equal(headers.includes('FINAL IDS USED:'), true);
   assert.equal(headers.includes('=== AI DEBUG END ==='), true);
 });
+
+test('openai-suggestion sends full active menu semantic context to OpenAI prompt', async () => {
+  const openaiModulePath = require.resolve('openai');
+  const suggestionModulePath = require.resolve('../netlify/functions/openai-suggestion');
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  const originalSuggestionModule = require.cache[suggestionModulePath];
+  const originalApiKey = process.env.OPENAI_API_KEY;
+  let capturedRequest = null;
+
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async (request) => {
+            capturedRequest = request;
+            return { output_text: '{"ids":["margherita"]}' };
+          }
+        };
+      }
+    }
+  };
+
+  delete require.cache[suggestionModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+
+  try {
+    const { handler: isolatedHandler } = require('../netlify/functions/openai-suggestion');
+    const response = await isolatedHandler({
+      httpMethod: 'POST',
+      body: JSON.stringify({
+        prompt: 'Voglio qualcosa con tonno',
+        catalog: {
+          menu: [
+            {
+              id: 'margherita',
+              name: 'Pizza Margherita',
+              ingredients: 'pomodoro, mozzarella',
+              category: 'classiche',
+              active: true
+            },
+            {
+              id: 'tonno-cipolla',
+              name: 'Pizza Tonno e Cipolla',
+              ingredients: 'tonno, cipolla',
+              active: true
+            }
+          ]
+        }
+      })
+    });
+
+    assert.equal(response.statusCode, 200);
+    const userText = capturedRequest.input[1].content[0].text;
+    assert.equal(userText.includes('Menu attivo:'), true);
+    assert.equal(userText.includes('ID: margherita'), true);
+    assert.equal(userText.includes('Nome: Pizza Margherita'), true);
+    assert.equal(userText.includes('Ingredienti: pomodoro, mozzarella'), true);
+    assert.equal(userText.includes('Categoria: classiche'), true);
+    assert.match(
+      userText,
+      /ID: tonno-cipolla[\s\S]*Nome: Pizza Tonno e Cipolla[\s\S]*Ingredienti: tonno, cipolla[\s\S]*Categoria:\s*(?:\n|$)/
+    );
+  } finally {
+    delete require.cache[suggestionModulePath];
+    if (originalSuggestionModule) {
+      require.cache[suggestionModulePath] = originalSuggestionModule;
+    }
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+    if (typeof originalApiKey === 'undefined') {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalApiKey;
+    }
+  }
+});
