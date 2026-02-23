@@ -36,9 +36,26 @@
         .map((item) => [item.id, item])
     );
 
+    if (payload && payload.action === 'answer') {
+      return {
+        action: 'answer',
+        message: String(payload.message || 'Posso aiutarti a scegliere tra pizza o panino?'),
+        items: []
+      };
+    }
+
+    if (payload && payload.action === 'build_custom_item') {
+      return {
+        action: 'build_custom_item',
+        categoria: String(payload.categoria || ''),
+        ingredienti: Array.isArray(payload.ingredienti) ? payload.ingredienti : [],
+        items: []
+      };
+    }
+
     const items = Array.isArray(payload.items) ? payload.items : [];
     return {
-      note: String(payload.note || ''),
+      action: 'add_recommended_items',
       items: items
         .filter((it) => activeById.has(it.id))
         .map((it) => ({
@@ -49,6 +66,18 @@
   }
 
   function renderSuggestion(data) {
+    if (data.action === 'answer') {
+      resultEl.textContent = data.message;
+      addBtn.disabled = true;
+      return;
+    }
+
+    if (data.action === 'build_custom_item') {
+      resultEl.textContent = `Azione: crea ${data.categoria} personalizzata con ingredienti: ${(data.ingredienti || []).join(', ') || 'nessuno specificato'}`;
+      addBtn.disabled = true;
+      return;
+    }
+
     if (!data.items.length) {
       resultEl.textContent = 'Nessuna proposta valida.';
       addBtn.disabled = true;
@@ -60,8 +89,17 @@
     const secondaryLine = data.secondarySuggestion && data.secondarySuggestion.item
       ? `\nSuggerimento extra (${data.secondarySuggestion.kind}): ${(names.get(data.secondarySuggestion.item.id) || data.secondarySuggestion.item.id)} × ${data.secondarySuggestion.item.qty} — ${data.secondarySuggestion.cta || 'Aggiungi'}`
       : '';
-    resultEl.textContent = `Proposta:\n${lines}${secondaryLine}\n${data.note ? `\n${data.note}` : ''}`;
+    resultEl.textContent = `Proposta:\n${lines}${secondaryLine}`;
     addBtn.disabled = false;
+  }
+
+
+  function showSuccessMessage(message) {
+    resultEl.textContent = String(message || 'Operazione completata.');
+  }
+
+  function showErrorMessage(message) {
+    resultEl.textContent = String(message || 'Errore tecnico temporaneo.');
   }
 
   function getPeopleCount(message) {
@@ -172,10 +210,43 @@
         return;
       }
 
+      if (payload.action === 'build_custom_item') {
+        try {
+          const buildResponse = await fetch('/.netlify/functions/build-item', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (!buildResponse.ok) {
+            throw new Error('Errore validazione server');
+          }
+
+          const buildData = await parseJsonSafely(buildResponse);
+          if (!buildData || !buildData.cart_item || !window.Cart || typeof window.Cart.addItem !== 'function') {
+            throw new Error('Risposta build-item non valida');
+          }
+
+          window.Cart.addItem(buildData.cart_item);
+          window.dispatchEvent(new Event('cart-updated'));
+          showSuccessMessage('Articolo aggiunto al carrello');
+          if (typeof window.alDogeOpenDrawer === 'function') {
+            window.alDogeOpenDrawer();
+          }
+          addBtn.disabled = true;
+          lastSuggestion = null;
+          return;
+        } catch (err) {
+          console.error(err);
+          showErrorMessage('Errore nella creazione dell’articolo');
+          return;
+        }
+      }
+
       const validated = validateSuggestion(payload);
-      validated.secondarySuggestion = payload.secondarySuggestion || null;
+      validated.secondarySuggestion = validated.action === 'add_recommended_items' ? (payload.secondarySuggestion || null) : null;
       lastSuggestion = validated;
-      renderSuggestion(applyPostSuggestionConversionFlow(validated, message));
+      renderSuggestion(validated.action === 'add_recommended_items' ? applyPostSuggestionConversionFlow(validated, message) : validated);
     } catch (error) {
       console.error(error);
       resultEl.textContent = 'Errore tecnico temporaneo.';

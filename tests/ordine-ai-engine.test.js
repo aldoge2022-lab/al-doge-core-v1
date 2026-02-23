@@ -9,7 +9,7 @@ const sampleMenu = [
   { ingredienti: ['funghi'] }
 ];
 
-test('generatePizza returns custom pizza with up to 3 available ingredients', () => {
+test('generatePizza returns custom pizza with deterministic valid ingredients and technical-category pricing', () => {
   const result = engine.generatePizza({ richiesta: 'fammi una pizza', menu: sampleMenu });
   const available = new Set(sampleMenu.flatMap((item) => item.ingredienti));
 
@@ -17,10 +17,10 @@ test('generatePizza returns custom pizza with up to 3 available ingredients', ()
   assert.equal(result.ingredienti.length <= 3, true);
   assert.deepEqual(result.ingredienti, [...new Set(result.ingredienti)]);
   assert.equal(result.ingredienti.every((item) => available.has(item)), true);
-  assert.equal(result.prezzo, 6 + result.ingredienti.length * 1.5);
+  assert.equal(result.prezzo, 11);
 });
 
-test('generatePanino returns custom panino with up to 4 available ingredients', () => {
+test('generatePanino returns custom panino ingredients without fish and with technical-category pricing', () => {
   const result = engine.generatePanino({ richiesta: 'fammi un panino', menu: sampleMenu });
   const available = new Set(sampleMenu.flatMap((item) => item.ingredienti));
 
@@ -28,5 +28,6 @@ test('generatePanino returns custom panino with up to 4 available ingredients', 
   assert.equal(result.ingredienti.length <= 4, true);
   assert.deepEqual(result.ingredienti, [...new Set(result.ingredienti)]);
   assert.equal(result.ingredienti.every((item) => available.has(item)), true);
-  assert.equal(result.prezzo, 5 + result.ingredienti.length * 1.5);
+  assert.equal(result.ingredienti.some((item) => String(item).toLowerCase().includes('tonno')), false);
+  assert.equal(result.prezzo, 12.5);
 });
