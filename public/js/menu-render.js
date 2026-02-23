@@ -1,8 +1,20 @@
 (function () {
   const state = {
-    data: window.ALDOGE_CATALOG || null,
-    size: null
+    data: {
+      menu: [],
+      drinks: [],
+      extras: {},
+      doughs: { normale: { surcharge_cents: 0 } },
+      size_engine: {
+        default: 'normale',
+        options: {
+          normale: { label: 'Normale', surcharge_cents: 0 }
+        }
+      }
+    },
+    size: 'normale'
   };
+  window.ALDOGE_CATALOG = state.data;
 
   function formatCents(cents) {
     return '€ ' + (cents / 100).toFixed(2);
@@ -74,21 +86,51 @@
   }
 
   function isMenuUnavailable(menu) {
-    if (!menu) return true;
-    const hasCategoryPayload = 'pizze' in menu || 'panini' in menu || 'bevande' in menu;
-    if (!hasCategoryPayload) return !Array.isArray(menu.menu) || menu.menu.length === 0;
-    return (
-      (!menu.pizze || menu.pizze.length === 0) &&
-      (!menu.panini || menu.panini.length === 0) &&
-      (!menu.bevande || menu.bevande.length === 0)
-    );
+    return !menu || !Array.isArray(menu.menu) || menu.menu.length === 0;
   }
 
-  if (!isMenuUnavailable(state.data)) {
-    state.size = state.data.size_engine.default;
-    renderSizeSelector();
-    renderMenu();
-  } else {
-    document.getElementById('menu').textContent = 'Errore nel caricamento del menu';
+  function toCatalogItem(item, type) {
+    const price = Number(item.prezzo);
+    return {
+      id: String(item.id),
+      name: String(item.nome),
+      type,
+      active: true,
+      base_price_cents: Number.isFinite(price) ? Math.round(price * 100) : 0
+    };
   }
+
+  async function loadMenu() {
+    const response = await fetch('/.netlify/functions/api-menu');
+    if (!response.ok) throw new Error('Menu fetch failed');
+    const payload = await response.json();
+
+    state.data.menu = [
+      ...(Array.isArray(payload.pizze) ? payload.pizze : []).map((item) => toCatalogItem(item, 'pizza')),
+      ...(Array.isArray(payload.panini) ? payload.panini : []).map((item) => toCatalogItem(item, 'panino'))
+    ];
+    state.data.drinks = (Array.isArray(payload.bevande) ? payload.bevande : []).map((item) => toCatalogItem(item, 'drink'));
+    state.data.extras = {};
+    state.data.doughs = { normale: { surcharge_cents: 0 } };
+    state.data.size_engine = {
+      default: 'normale',
+      options: {
+        normale: { label: 'Normale', surcharge_cents: 0 }
+      }
+    };
+    state.size = state.data.size_engine.default;
+  }
+
+  loadMenu()
+    .then(() => {
+      if (isMenuUnavailable(state.data)) {
+        document.getElementById('menu').textContent = 'Errore nel caricamento del menu';
+        return;
+      }
+      renderSizeSelector();
+      renderMenu();
+    })
+    .catch(() => {
+      document.getElementById('menu').textContent = 'Errore nel caricamento del menu';
+    });
 })();
