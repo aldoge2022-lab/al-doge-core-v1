@@ -6,16 +6,33 @@ const { handler } = require('../netlify/functions/openai-suggestion');
 test('openai-suggestion returns 405 for non-POST', async () => {
   const response = await handler({ httpMethod: 'GET' });
   assert.equal(response.statusCode, 405);
+  const body = JSON.parse(response.body);
+  assert.equal(body.ok, false);
+  assert.equal(body.code, 'METHOD_NOT_ALLOWED');
 });
 
-test('openai-suggestion suggests catalog drink for spicy cart', async () => {
+test('openai-suggestion returns 400 when prompt is missing', async () => {
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({
-      cart: [{ type: 'pizza', id: 'diavola', dough: 'normale', extras: [], quantity: 1 }]
-    })
+    body: JSON.stringify({})
   });
-  const parsed = JSON.parse(response.body);
-  assert.equal(parsed.suggested_drink, 'Birra 0.5L');
-  assert.match(parsed.reason, /piccante/i);
+
+  assert.equal(response.statusCode, 400);
+  const body = JSON.parse(response.body);
+  assert.equal(body.ok, false);
+  assert.equal(body.error, 'Prompt mancante');
+});
+
+test('openai-suggestion returns unified suggestion payload', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ prompt: 'Siamo in 4, vogliamo una pizza piccante' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.equal(body.ok, true);
+  assert.equal(typeof body.suggestion, 'object');
+  assert.equal(Array.isArray(body.suggestion.items), true);
+  assert.equal(body.suggestion.items[0].id, 'diavola');
 });

@@ -95,37 +95,14 @@
 
   async function updateDrinkSuggestionBox() {
     if (!drinkSuggestionBox || !drinkSuggestionTitle || !drinkSuggestionReason || !drinkSuggestionAddBtn || !window.Cart) return;
-    try {
-      const response = await fetch('/.netlify/functions/openai-suggestion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cart: window.Cart.getCart() })
-      });
-      const data = await parseJsonSafely(response);
-      if (!response.ok || !data || !data.suggested_drink) {
-        drinkSuggestionBox.hidden = true;
-        return;
-      }
-
-      const catalog = window.ALDOGE_CATALOG || { drinks: [] };
-      const drink = (catalog.drinks || []).find((entry) => entry.name === data.suggested_drink);
-      if (!drink) {
-        drinkSuggestionBox.hidden = true;
-        return;
-      }
-
-      drinkSuggestionTitle.textContent = `🥤 Abbinalo così: ${data.suggested_drink}`;
-      drinkSuggestionReason.textContent = data.reason || '';
-      drinkSuggestionAddBtn.onclick = function () {
-        window.Cart.addItem({ type: 'drink', id: drink.id, quantity: 1 });
-      };
-      drinkSuggestionBox.hidden = false;
-    } catch (error) {
-      drinkSuggestionBox.hidden = true;
-    }
+    drinkSuggestionBox.hidden = true;
   }
 
   window.addEventListener('product-added', updateDrinkSuggestionBox);
+
+  function showError(message) {
+    resultEl.textContent = message;
+  }
 
   async function handleSuggestClick() {
     const currentPromptEl = document.getElementById('aiPrompt');
@@ -141,47 +118,31 @@
       return;
     }
 
-    try {
-      const response = await fetch('/.netlify/functions/ai-consigli', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: message })
+    const promptText = message;
+
+    fetch('/.netlify/functions/openai-suggestion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: promptText,
+        catalog: window.ALDOGE_CATALOG
+      })
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.ok) throw new Error(data.error || 'AI error');
+        if (!data.suggestion || !Array.isArray(data.suggestion.items) || data.suggestion.items.length === 0) {
+          throw new Error('AI error');
+        }
+        const validated = validateSuggestion(data.suggestion);
+        if (!validated.items.length) throw new Error('AI error');
+        lastSuggestion = validated;
+        renderSuggestion(validated);
+      })
+      .catch((err) => {
+        console.error(err);
+        showError('Errore nella generazione.');
       });
-
-      const payload = await parseJsonSafely(response);
-      console.log('AI raw response', { status: response.status, payload: payload });
-      if (!response.ok) {
-        resultEl.textContent = (payload && payload.error) || 'Errore nella generazione.';
-        return;
-      }
-      if (!payload) {
-        resultEl.textContent = 'Errore nella generazione.';
-        return;
-      }
-      if (payload.ok === false) {
-        resultEl.textContent = String(payload.error || 'Errore nella generazione.');
-        return;
-      }
-      if (payload.ok !== true || !Array.isArray(payload.items)) {
-        resultEl.textContent = 'Errore nella generazione.';
-        return;
-      }
-      if (payload.items.length === 0) {
-        resultEl.textContent = 'Nessuna proposta valida.';
-        return;
-      }
-
-      const validated = validateSuggestion(payload);
-      if (!validated.items.length) {
-        resultEl.textContent = 'Errore nella generazione.';
-        return;
-      }
-      lastSuggestion = validated;
-      renderSuggestion(validated);
-    } catch (error) {
-      console.error(error);
-      resultEl.textContent = 'Errore tecnico temporaneo.';
-    }
   }
 
   document.addEventListener('click', async function (e) {
