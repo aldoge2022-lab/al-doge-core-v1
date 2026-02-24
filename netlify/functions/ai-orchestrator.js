@@ -33,44 +33,37 @@ function tryParseJson(body, fallback) {
 }
 
 function getToolCalls(response) {
-  const output = Array.isArray(response?.output) ? response.output : [];
-  return output
-    .filter((entry) => entry?.type === 'function_call' || entry?.type === 'tool_call')
-    .map((entry) => {
-      if (entry?.type === 'function_call') {
-        return entry;
-      }
-      const toolName = entry?.name || entry?.tool_name || entry?.function?.name;
-      const toolArgsRaw = entry?.arguments ?? entry?.input ?? entry?.function?.arguments ?? '{}';
-      return {
-        ...entry,
-        name: toolName,
-        arguments: typeof toolArgsRaw === 'string' ? toolArgsRaw : JSON.stringify(toolArgsRaw),
-        call_id: entry?.call_id || entry?.id
-      };
-    })
-    .filter((entry) => entry?.name);
+  if (!response?.output) return [];
+
+  return response.output
+    .filter((item) => item.type === 'tool_call')
+    .map((item) => ({
+      name: item.name,
+      arguments: JSON.parse(item.arguments || '{}'),
+      call_id: item.call_id
+    }));
 }
 
 function getAssistantReply(response) {
-  const output = Array.isArray(response?.output) ? response.output : [];
-  for (let i = output.length - 1; i >= 0; i -= 1) {
-    const entry = output[i];
-    if (entry?.type !== 'message') {
-      continue;
-    }
-    const content = Array.isArray(entry?.content) ? entry.content : [];
-    const messagePart = content.find((part) => typeof part?.text === 'string');
-    if (messagePart?.text) {
-      return messagePart.text;
-    }
+  if (!response?.output) return null;
+
+  const message = response.output.find((item) => item.type === 'message');
+  if (!message) return null;
+
+  if (Array.isArray(message.content)) {
+    return message.content.map((c) => c.text).join('\n');
   }
-  return typeof response?.output_text === 'string' ? response.output_text : '';
+
+  return message.content || null;
 }
 
 function parseToolArguments(argumentsJson) {
-  if (!argumentsJson || typeof argumentsJson !== 'string') {
+  if (!argumentsJson) {
     return {};
+  }
+
+  if (typeof argumentsJson !== 'string') {
+    return argumentsJson;
   }
 
   try {
@@ -258,7 +251,7 @@ exports.handler = async (event) => {
       }
     ];
 
-    const messages = [
+    const input = [
       {
         role: 'system',
         content: 'Usa solo tool con ID reali del food-core. Non usare nomi ingredienti.'
@@ -271,7 +264,7 @@ exports.handler = async (event) => {
 
     let response = await client.responses.create({
       model: 'gpt-4o-mini-2024-07-18',
-      input: messages,
+      input,
       tools
     });
     console.log('OPENAI_RAW_RESPONSE', JSON.stringify(response, null, 2));
@@ -354,7 +347,7 @@ exports.handler = async (event) => {
     } else if (error?.status === 429) {
       clientMessage = 'Servizio AI momentaneamente sovraccarico.';
     } else if (error?.status === 400) {
-      clientMessage = 'Richiesta AI non valida.';
+      clientMessage = 'Errore AI temporaneo.';
     }
 
     console.log('TOOLS CALLED:', toolsCalled);

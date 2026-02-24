@@ -177,7 +177,7 @@ test('ai-orchestrator maps OpenAI status errors to differentiated messages', asy
     for (const [status, expectedMessage] of [
       [401, 'Errore configurazione AI (chiave non valida).'],
       [429, 'Servizio AI momentaneamente sovraccarico.'],
-      [400, 'Richiesta AI non valida.']
+      [400, 'Errore AI temporaneo.']
     ]) {
       delete require.cache[modulePath];
       require.cache[openaiModulePath] = {
@@ -239,7 +239,7 @@ test('proceed_to_checkout uses frontend cart state', async () => {
                 id: 'resp_checkout_1',
                 output: [
                   {
-                    type: 'function_call',
+                    type: 'tool_call',
                     name: 'proceed_to_checkout',
                     call_id: 'call_checkout_1',
                     arguments: JSON.stringify({})
