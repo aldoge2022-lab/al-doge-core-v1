@@ -34,7 +34,38 @@ function tryParseJson(body, fallback) {
 
 function getToolCalls(response) {
   const output = Array.isArray(response?.output) ? response.output : [];
-  return output.filter((entry) => entry?.type === 'function_call' && entry?.name);
+  return output
+    .filter((entry) => entry?.type === 'function_call' || entry?.type === 'tool_call')
+    .map((entry) => {
+      if (entry?.type === 'function_call') {
+        return entry;
+      }
+      const toolName = entry?.name || entry?.tool_name || entry?.function?.name;
+      const toolArgsRaw = entry?.arguments ?? entry?.input ?? entry?.function?.arguments ?? '{}';
+      return {
+        ...entry,
+        name: toolName,
+        arguments: typeof toolArgsRaw === 'string' ? toolArgsRaw : JSON.stringify(toolArgsRaw),
+        call_id: entry?.call_id || entry?.id
+      };
+    })
+    .filter((entry) => entry?.name);
+}
+
+function getAssistantReply(response) {
+  const output = Array.isArray(response?.output) ? response.output : [];
+  for (let i = output.length - 1; i >= 0; i -= 1) {
+    const entry = output[i];
+    if (entry?.type !== 'message') {
+      continue;
+    }
+    const content = Array.isArray(entry?.content) ? entry.content : [];
+    const messagePart = content.find((part) => typeof part?.text === 'string');
+    if (messagePart?.text) {
+      return messagePart.text;
+    }
+  }
+  return typeof response?.output_text === 'string' ? response.output_text : '';
 }
 
 function parseToolArguments(argumentsJson) {
@@ -211,22 +242,20 @@ exports.handler = async (event) => {
       }
     ];
 
+    const messages = [
+      {
+        role: 'system',
+        content: 'Usa solo tool con ID reali del food-core. Non usare nomi ingredienti.'
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ];
+
     let response = await client.responses.create({
-      model: 'gpt-4o-mini',
-      temperature: 0,
-      input: [
-        {
-          role: 'system',
-          content: [{
-            type: 'input_text',
-            text: 'Usa solo tool con ID reali del food-core. Non usare nomi ingredienti.'
-          }]
-        },
-        {
-          role: 'user',
-          content: [{ type: 'input_text', text: prompt }]
-        }
-      ],
+      model: 'gpt-4o-mini-2024-07-18',
+      input: messages,
       tools
     });
 
@@ -266,14 +295,13 @@ exports.handler = async (event) => {
       }
 
       response = await client.responses.create({
-        model: 'gpt-4o-mini',
-        temperature: 0,
+        model: 'gpt-4o-mini-2024-07-18',
         previous_response_id: response.id,
         input: outputs
       });
     }
 
-    const assistantReply = typeof response?.output_text === 'string' ? response.output_text : '';
+    const assistantReply = getAssistantReply(response);
 
     console.log('TOOLS CALLED:', toolsCalled);
     console.log('FINAL ACTIONS:', finalActions);
