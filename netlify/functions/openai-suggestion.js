@@ -265,7 +265,11 @@ exports.handler = async (event) => {
         id: item.id,
         score: computeScore(item, words, prompt.trim().toLowerCase(), aiSet)
       }))
-      .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+      .sort((a, b) => {
+        const idA = String(a.id ?? '');
+        const idB = String(b.id ?? '');
+        return b.score - a.score || idA.localeCompare(idB);
+      });
 
     const fallbackIds = sanitizeIds(fallbackIdsFromPrompt(prompt.trim(), activeItems), activeItems);
     let guaranteedIds = ranked

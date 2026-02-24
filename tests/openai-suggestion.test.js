@@ -144,3 +144,26 @@ test('openai-suggestion sends full active menu semantic context to OpenAI prompt
     }
   }
 });
+
+test('openai-suggestion handles non-string IDs in tie-break sorting deterministically', async () => {
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      prompt: 'zzzz-nomatch',
+      catalog: {
+        menu: [
+          { id: 2, name: 'Item Due', ingredients: '', category: '', active: true },
+          { id: null, name: 'Item Null', ingredients: '', category: '', active: true },
+          { id: 10, name: 'Item Dieci', ingredients: '', category: '', active: true }
+        ]
+      }
+    })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.deepEqual(
+    body.suggestion.items.map((item) => item.id),
+    [10, 2]
+  );
+});
