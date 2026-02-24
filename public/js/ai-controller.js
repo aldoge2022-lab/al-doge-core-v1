@@ -70,7 +70,12 @@
     const response = await fetch('/api/ai-orchestrator', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: safePrompt })
+      body: JSON.stringify({
+        prompt: safePrompt,
+        cart: (window.Cart && typeof window.Cart.getCart === 'function')
+          ? window.Cart.getCart()
+          : []
+      })
     });
     const payload = await response.json();
     handleResponse(payload);
