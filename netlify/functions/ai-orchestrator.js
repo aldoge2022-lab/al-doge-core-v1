@@ -148,7 +148,7 @@ exports.handler = async (event) => {
     }));
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY || !String(process.env.OPENAI_API_KEY).trim()) {
     console.error('OPENAI_API_KEY_MISSING');
     console.log('TOOLS CALLED:', toolsCalled);
     console.log('FINAL ACTIONS:', finalActions);
