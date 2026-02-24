@@ -142,76 +142,55 @@ function computeScore(item, words, promptText, aiSet) {
   const category = String(item.category || '').toLowerCase();
 
   let score = 0;
-  let matchCount = 0;
 
+  // =============================
+  // 1️⃣ MATCH DIRETTI SU PAROLE
+  // =============================
   words.forEach((word) => {
     if (!word || word.length < 3) return;
 
-    let matched = false;
+    const inName = name.includes(word);
+    const inIngredients = ingredients.includes(word);
+    const inCategory = category.includes(word);
 
-    if (ingredients.includes(word)) {
-      score += RANKING_WEIGHTS.ingredientMatch;
-      matched = true;
+    if (inIngredients) score += 40;
+    if (inName) score += 30;
+    if (inCategory) score += 10;
+
+    // Penalità per mismatch esplicito
+    if (!inIngredients && !inName && !inCategory) {
+      score -= 15;
     }
-
-    if (name.includes(word)) {
-      score += RANKING_WEIGHTS.nameMatch;
-      matched = true;
-    }
-
-    if (category.includes(word)) {
-      score += RANKING_WEIGHTS.categoryMatch;
-      matched = true;
-    }
-
-    if (matched) matchCount += 1;
   });
 
-  if (matchCount > 0) {
-    score = Math.min(score, 20);
-  }
+  // =============================
+  // 2️⃣ INTENTI
+  // =============================
+  const vegetarianPrompt = /vegetarian|vegetariana|veg\b|senza carne/.test(promptText);
+  const meatPrompt = /carne|salame|salsiccia|prosciutto|pollo|manzo/.test(promptText);
+  const spicyPrompt = /piccante|spicy|diavola|peperoncino/.test(promptText);
 
+  const isMeatItem = /carne|salame|salsiccia|prosciutto|pollo|manzo|bacon|ham/.test(`${name} ${ingredients}`);
+  const isSpicyItem = /piccante|spicy|diavola|peperoncino/.test(`${name} ${ingredients}`);
+
+  if (vegetarianPrompt && isMeatItem) score -= 50;
+  if (meatPrompt && !isMeatItem) score -= 30;
+  if (spicyPrompt && isSpicyItem) score += 25;
+
+  // =============================
+  // 3️⃣ AI BONUS (assist non dominante)
+  // =============================
   if (aiSet.has(item.id)) {
-    score += RANKING_WEIGHTS.aiBonus;
+    score += 15;
   }
 
-  const vegetarianPrompt = hasAny(promptText, [/vegetarian/, /vegetariana/, /veg\b/, /senza carne/]);
-  const meatPrompt = hasAny(promptText, [/carne/, /salame/, /salsiccia/, /prosciutto/, /pollo/, /manzo/]);
-  const spicyPrompt = hasAny(promptText, [/piccante/, /spicy/, /diavola/, /peperoncino/]);
-
-  const isMeatItem = hasAny(`${name} ${ingredients}`, [/carne/, /salame/, /salsiccia/, /prosciutto/, /pollo/, /manzo/, /bacon/, /ham/]);
-  const isVegetarianItem = !isMeatItem;
-  const isSpicyItem = hasAny(`${name} ${ingredients}`, [/piccante/, /spicy/, /diavola/, /peperoncino/]);
-
-  if (vegetarianPrompt && !isVegetarianItem) {
-    score += RANKING_WEIGHTS.vegetarianPenalty;
-  }
-
-  if (meatPrompt && !isMeatItem) {
-    score += RANKING_WEIGHTS.meatPenalty;
-  }
-
-  if (spicyPrompt && isSpicyItem) {
-    score += RANKING_WEIGHTS.spicyBoost;
-  }
-
+  // =============================
+  // 4️⃣ BOOST COMMERCIALE
+  // =============================
   const margin = Number(item.margin || 0);
-  if (margin >= 0.6) {
-    score += RANKING_WEIGHTS.highMarginBoost;
-  }
-
-  if (item.seasonal === true) {
-    score += RANKING_WEIGHTS.seasonalBoost;
-  }
-
-  if (item.isNew === true || item.new === true) {
-    score += RANKING_WEIGHTS.newItemBoost;
-  }
-
-  // Penalizza leggermente item completamente non correlati
-  if (score === 0 && !aiSet.has(item.id)) {
-    score -= 1;
-  }
+  if (margin >= 0.6) score += 8;
+  if (item.seasonal === true) score += 6;
+  if (item.isNew === true || item.new === true) score += 5;
 
   return score;
 }
