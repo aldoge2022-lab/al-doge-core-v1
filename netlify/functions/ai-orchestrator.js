@@ -205,8 +205,8 @@ exports.handler = async (event) => {
           additionalProperties: false,
           properties: {
             ingredientIds: { type: 'array', items: { type: 'string' } },
-            impasto: { type: 'string' },
-            mozzarella: { type: 'string' }
+            impasto: { type: ['string', 'null'] },
+            mozzarella: { type: ['string', 'null'] }
           },
           required: ['ingredientIds']
         }
