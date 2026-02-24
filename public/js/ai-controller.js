@@ -17,26 +17,67 @@
   }
 
   function applyCartUpdates(cartUpdates) {
-    if (!Array.isArray(cartUpdates) || !window.Cart || typeof window.Cart.addItem !== 'function') {
+    if (!Array.isArray(cartUpdates) || !window.Cart) {
       return;
     }
 
     const dough = currentDough();
-    cartUpdates.forEach((entry) => {
-      if (!entry || entry.type !== 'add') return;
+    for (const entry of cartUpdates) {
+      if (!entry || typeof entry.type !== 'string') continue;
+
+      if (entry.type === 'checkout') {
+        const url = String(entry.url || '').trim();
+        if (url) {
+          window.location.href = url;
+          return;
+        }
+        continue;
+      }
+
+      if (entry.type === 'clear') {
+        if (typeof window.Cart.clearCart === 'function') {
+          window.Cart.clearCart();
+        }
+        continue;
+      }
 
       const menuItemId = String(entry.menuItemId || '').trim();
-      const qty = Math.max(1, Number(entry.qty) || 1);
-      const menuItem = getMenuItemById(menuItemId);
-      if (!menuItem) return;
+      if (!menuItemId) continue;
 
-      window.Cart.addItem({
-        id: menuItem.id,
-        name: menuItem.name,
-        dough,
-        quantity: qty
-      });
-    });
+      if (entry.type === 'remove') {
+        if (typeof window.Cart.removeFromCart === 'function') {
+          window.Cart.removeFromCart(menuItemId);
+        }
+        continue;
+      }
+
+      if (entry.type === 'update') {
+        const qty = Math.max(1, Number(entry.qty) || 1);
+        if (typeof window.Cart.getCart === 'function' && typeof window.Cart.removeFromCart === 'function' && typeof window.Cart.addItem === 'function') {
+          const existing = window.Cart.getCart().find((item) => item && item.id === menuItemId);
+          if (!existing) continue;
+          window.Cart.removeFromCart(menuItemId);
+          window.Cart.addItem({
+            ...existing,
+            quantity: qty
+          });
+        }
+        continue;
+      }
+
+      if (entry.type === 'add') {
+        const qty = Math.max(1, Number(entry.qty) || 1);
+        const menuItem = getMenuItemById(menuItemId);
+        if (!menuItem || typeof window.Cart.addItem !== 'function') continue;
+
+        window.Cart.addItem({
+          id: menuItem.id,
+          name: menuItem.name,
+          dough,
+          quantity: qty
+        });
+      }
+    }
 
     if (typeof window.Cart.updateBadge === 'function') {
       window.Cart.updateBadge();
