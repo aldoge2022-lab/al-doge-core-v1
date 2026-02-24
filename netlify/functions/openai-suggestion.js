@@ -291,7 +291,6 @@ exports.handler = async (event) => {
     console.log('OPENAI RAW CONTENT:', content);
     console.log('PARSED IDS:', parsed?.ids);
     console.log('VALID IDS AFTER FILTER:', validIds);
-    console.log('RANKED SCORES:', ranked);
     console.log('FALLBACK IDS:', fallbackIds);
     console.log('ALL NEGATIVE:', allNegative);
     console.log('FINAL IDS USED:', guaranteedIds);
