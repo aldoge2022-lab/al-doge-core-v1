@@ -28,12 +28,8 @@ test('ai-orchestrator returns fallback response when OPENAI_API_KEY is missing',
 
   assert.equal(response.statusCode, 200);
   const body = JSON.parse(response.body);
-  assert.equal(body.ok, true);
-  assert.equal(body.fallback, true);
-  assert.equal(Array.isArray(body.toolsCalled), true);
-  assert.equal(Array.isArray(body.finalActions), true);
-  assert.equal(Array.isArray(body.cartUpdates), true);
-  assert.equal(body.message, 'AI orchestrator non disponibile: OPENAI_API_KEY mancante.');
+  assert.deepEqual(body.cartUpdates, []);
+  assert.equal(body.message, 'Chiave OpenAI non configurata.');
   assert.equal(body.result, body.message);
 });
 
@@ -144,6 +140,54 @@ test('ai-orchestrator catch path returns normalized temporary error', async () =
     assert.deepEqual(body.cartUpdates, []);
     assert.equal(body.message, 'Errore AI temporaneo.');
     assert.equal(body.result, body.message);
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
+});
+
+test('ai-orchestrator maps OpenAI status errors to differentiated messages', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+
+  try {
+    for (const [status, expectedMessage] of [
+      [401, 'Errore configurazione AI (chiave non valida).'],
+      [429, 'Servizio AI momentaneamente sovraccarico.'],
+      [400, 'Richiesta AI non valida.']
+    ]) {
+      delete require.cache[modulePath];
+      require.cache[openaiModulePath] = {
+        id: openaiModulePath,
+        filename: openaiModulePath,
+        loaded: true,
+        exports: class OpenAI {
+          constructor() {
+            this.responses = {
+              create: async () => {
+                const error = new Error('boom');
+                error.status = status;
+                throw error;
+              }
+            };
+          }
+        }
+      };
+
+      const { handler } = require('../netlify/functions/ai-orchestrator');
+      const response = await handler({
+        httpMethod: 'POST',
+        body: JSON.stringify({ prompt: 'ciao' })
+      });
+      const body = JSON.parse(response.body);
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(body.cartUpdates, []);
+      assert.equal(body.message, expectedMessage);
+      assert.equal(body.result, body.message);
+    }
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
