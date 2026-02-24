@@ -2,6 +2,18 @@ const OpenAI = require('openai');
 const catalogData = require('../../data/catalog');
 
 const MAX_UNIQUE_ITEMS = 3;
+const RANKING_WEIGHTS = {
+  ingredientMatch: 4,
+  nameMatch: 2,
+  categoryMatch: 1,
+  aiBonus: 8,
+  vegetarianPenalty: -25,
+  meatPenalty: -15,
+  spicyBoost: 6,
+  highMarginBoost: 5,
+  seasonalBoost: 4,
+  newItemBoost: 3
+};
 
 function jsonResponse(statusCode, payload) {
   return {
@@ -113,6 +125,97 @@ function sanitizeIds(candidateIds, activeItems) {
     .slice(0, MAX_UNIQUE_ITEMS);
 }
 
+function promptWords(prompt) {
+  return String(prompt || '')
+    .toLowerCase()
+    .split(/[^a-z0-9àèéìòù]+/i)
+    .filter(Boolean);
+}
+
+function hasAny(text, patterns) {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+function computeScore(item, words, promptText, aiSet) {
+  const name = String(item.name || '').toLowerCase();
+  const ingredients = String(item.ingredients || '').toLowerCase();
+  const category = String(item.category || '').toLowerCase();
+
+  let score = 0;
+  let matchCount = 0;
+
+  words.forEach((word) => {
+    if (!word || word.length < 3) return;
+
+    let matched = false;
+
+    if (ingredients.includes(word)) {
+      score += RANKING_WEIGHTS.ingredientMatch;
+      matched = true;
+    }
+
+    if (name.includes(word)) {
+      score += RANKING_WEIGHTS.nameMatch;
+      matched = true;
+    }
+
+    if (category.includes(word)) {
+      score += RANKING_WEIGHTS.categoryMatch;
+      matched = true;
+    }
+
+    if (matched) matchCount += 1;
+  });
+
+  if (matchCount > 0) {
+    score = Math.min(score, 20);
+  }
+
+  if (aiSet.has(item.id)) {
+    score += RANKING_WEIGHTS.aiBonus;
+  }
+
+  const vegetarianPrompt = hasAny(promptText, [/vegetarian/, /vegetariana/, /veg\b/, /senza carne/]);
+  const meatPrompt = hasAny(promptText, [/carne/, /salame/, /salsiccia/, /prosciutto/, /pollo/, /manzo/]);
+  const spicyPrompt = hasAny(promptText, [/piccante/, /spicy/, /diavola/, /peperoncino/]);
+
+  const isMeatItem = hasAny(`${name} ${ingredients}`, [/carne/, /salame/, /salsiccia/, /prosciutto/, /pollo/, /manzo/, /bacon/, /ham/]);
+  const isVegetarianItem = !isMeatItem;
+  const isSpicyItem = hasAny(`${name} ${ingredients}`, [/piccante/, /spicy/, /diavola/, /peperoncino/]);
+
+  if (vegetarianPrompt && !isVegetarianItem) {
+    score += RANKING_WEIGHTS.vegetarianPenalty;
+  }
+
+  if (meatPrompt && !isMeatItem) {
+    score += RANKING_WEIGHTS.meatPenalty;
+  }
+
+  if (spicyPrompt && isSpicyItem) {
+    score += RANKING_WEIGHTS.spicyBoost;
+  }
+
+  const margin = Number(item.margin || 0);
+  if (margin >= 0.6) {
+    score += RANKING_WEIGHTS.highMarginBoost;
+  }
+
+  if (item.seasonal === true) {
+    score += RANKING_WEIGHTS.seasonalBoost;
+  }
+
+  if (item.isNew === true || item.new === true) {
+    score += RANKING_WEIGHTS.newItemBoost;
+  }
+
+  // Penalizza leggermente item completamente non correlati
+  if (score === 0 && !aiSet.has(item.id)) {
+    score -= 1;
+  }
+
+  return score;
+}
+
 exports.fallbackIdsFromPrompt = fallbackIdsFromPrompt;
 
 exports.handler = async (event) => {
@@ -155,8 +258,28 @@ exports.handler = async (event) => {
       console.error('OpenAI suggestion failed, using fallback:', error.message || error);
     }
 
+    const words = promptWords(prompt);
+    const aiSet = new Set(validIds);
+    const ranked = activeItems
+      .map((item) => ({
+        id: item.id,
+        score: computeScore(item, words, prompt.trim().toLowerCase(), aiSet)
+      }))
+      .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+
     const fallbackIds = sanitizeIds(fallbackIdsFromPrompt(prompt.trim(), activeItems), activeItems);
-    const guaranteedIds = validIds.length ? validIds : fallbackIds;
+    let guaranteedIds = ranked
+      .slice(0, MAX_UNIQUE_ITEMS)
+      .map((item) => item.id);
+
+    const allNegative = ranked.every((item) => item.score < -5);
+
+    if (allNegative) {
+      guaranteedIds = sanitizeIds(
+        fallbackIdsFromPrompt(prompt.trim(), activeItems),
+        activeItems
+      );
+    }
 
     console.log('=== AI DEBUG START ===');
     console.log('PROMPT:', prompt);
@@ -164,7 +287,9 @@ exports.handler = async (event) => {
     console.log('OPENAI RAW CONTENT:', content);
     console.log('PARSED IDS:', parsed?.ids);
     console.log('VALID IDS AFTER FILTER:', validIds);
+    console.log('RANKED SCORES:', ranked);
     console.log('FALLBACK IDS:', fallbackIds);
+    console.log('ALL NEGATIVE:', allNegative);
     console.log('FINAL IDS USED:', guaranteedIds);
     console.log('=== AI DEBUG END ===');
 
