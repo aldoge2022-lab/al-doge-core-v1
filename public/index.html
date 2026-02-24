@@ -55,6 +55,19 @@
 
 <main class="container">
 
+  <section class="menu-controls ai-dominant" aria-label="AI Orchestrator">
+    <h2>🧠 AI Orchestrator</h2>
+    <p>Scrivi cosa vuoi ordinare e lascia fare all'AI.</p>
+    <textarea id="aiPrompt" rows="3" placeholder="Es: aggiungi una margherita e una proposta leggera"></textarea>
+    <div class="ai-quick-actions" aria-label="Suggerimenti rapidi">
+      <button type="button" class="ai-quick-btn" data-ai-quick="Aggiungi una margherita">Margherita</button>
+      <button type="button" class="ai-quick-btn" data-ai-quick="Proposta piccante">Piccante</button>
+      <button type="button" class="ai-quick-btn" data-ai-quick="Proposta vegetariana">Vegetariana</button>
+    </div>
+    <button id="aiSuggestBtn" type="button">Invia all'AI</button>
+    <div id="aiResult" aria-live="polite"></div>
+  </section>
+
   <section class="menu-controls">
     <label for="size-select">Formato:</label>
     <select id="size-select"></select>
@@ -62,21 +75,6 @@
       Maggiorazione formato:
       <span id="size-surcharge">€ 0.00</span>
     </p>
-  </section>
-
-  <section class="menu-controls" aria-label="Ordine AI">
-    <h2>Ordine AI</h2>
-    <textarea id="aiPrompt" rows="3" placeholder="Es: Siamo in 2, proposta leggera"></textarea>
-    <div class="ai-quick-actions" aria-label="Suggerimenti rapidi">
-      <button type="button" class="ai-quick-btn" data-ai-quick="Proposta piccante">Piccante</button>
-      <button type="button" class="ai-quick-btn" data-ai-quick="Proposta leggera">Leggera</button>
-      <button type="button" class="ai-quick-btn" data-ai-quick="Proposta vegetariana">Vegetariana</button>
-    </div>
-    <div>
-      <button id="aiSuggestBtn" type="button">Genera proposta</button>
-      <button id="aiAddBtn" type="button" disabled>Aggiungi al carrello</button>
-    </div>
-    <div id="aiResult" aria-live="polite"></div>
   </section>
 
   <section id="menu" class="menu-grid"></section>
@@ -96,7 +94,7 @@
 
 <script src="/js/menu-render.js"></script>
 <script src="/js/cart.js"></script>
-<script src="/js/ai-suggest.js"></script>
+<script src="/js/ai-controller.js"></script>
 
 </body>
 </html>

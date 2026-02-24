@@ -59,6 +59,17 @@ body {
   margin-bottom: 40px;
 }
 
+.ai-dominant {
+  background: linear-gradient(180deg, rgba(201, 169, 110, 0.16) 0%, rgba(26, 29, 35, 0.95) 100%);
+  border: 1px solid rgba(201, 169, 110, 0.5);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.ai-dominant h2 {
+  margin-top: 0;
+}
+
 select {
   background: var(--bg-card);
   color: var(--text-light);
