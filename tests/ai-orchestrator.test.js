@@ -109,6 +109,9 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
     assert.equal(body.result, body.message);
     assert.equal(requests[0].model, 'gpt-4o-mini-2024-07-18');
     assert.equal(requests[0].input[1].content, 'aggiungi due margherite al carrello');
+    const createCustomPaninoTool = requests[0].tools.find((tool) => tool.name === 'create_custom_panino');
+    assert.equal(createCustomPaninoTool?.parameters?.type, 'object');
+    assert.deepEqual(createCustomPaninoTool?.parameters?.required, ['ingredientIds', 'impasto', 'mozzarella']);
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
