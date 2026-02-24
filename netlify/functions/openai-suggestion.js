@@ -2,18 +2,6 @@ const OpenAI = require('openai');
 const catalogData = require('../../data/catalog');
 
 const MAX_UNIQUE_ITEMS = 3;
-const RANKING_WEIGHTS = {
-  ingredientMatch: 4,
-  nameMatch: 2,
-  categoryMatch: 1,
-  aiBonus: 8,
-  vegetarianPenalty: -25,
-  meatPenalty: -15,
-  spicyBoost: 6,
-  highMarginBoost: 5,
-  seasonalBoost: 4,
-  newItemBoost: 3
-};
 
 function jsonResponse(statusCode, payload) {
   return {
@@ -82,7 +70,16 @@ async function idsFromOpenAI(prompt, activeItems) {
         role: 'system',
         content: [{
           type: 'input_text',
-          text: `Seleziona massimo ${MAX_UNIQUE_ITEMS} ID prodotto dal menu attivo. Rispondi SOLO in JSON con il formato {"ids":["id1"]}.`
+          text: `
+Seleziona massimo ${MAX_UNIQUE_ITEMS} ID dal menu attivo.
+
+REGOLE OBBLIGATORIE:
+- Se il cliente menziona un ingrediente specifico, dai priorità assoluta a prodotti che lo contengono.
+- Non proporre prodotti incoerenti con restrizioni (es: senza carne → no carne).
+- Se richiesta generica, proponi un mix bilanciato tra classiche, premium e bestseller.
+- Rispondi SOLO con JSON valido nel formato:
+{"ids":["id1","id2"]}
+`
         }]
       },
       {
@@ -123,67 +120,6 @@ function sanitizeIds(candidateIds, activeItems) {
     .map((id) => String(id || '').trim())
     .filter((id) => activeById.has(id))))
     .slice(0, MAX_UNIQUE_ITEMS);
-}
-
-function promptWords(prompt) {
-  return String(prompt || '')
-    .toLowerCase()
-    .split(/[^a-z0-9àèéìòù]+/i)
-    .filter(Boolean);
-}
-
-function hasAny(text, patterns) {
-  return patterns.some((pattern) => pattern.test(text));
-}
-
-function computeScore(item, words, promptText, aiSet) {
-  const name = String(item.name || '').toLowerCase();
-  const ingredients = String(item.ingredients || '').toLowerCase();
-  const category = String(item.category || '').toLowerCase();
-
-  let score = 0;
-
-  // =============================
-  // 1️⃣ MATCH DIRETTI (solo positivi)
-  // =============================
-  words.forEach((word) => {
-    if (!word || word.length < 3) return;
-
-    if (ingredients.includes(word)) score += 40;
-    if (name.includes(word)) score += 30;
-    if (category.includes(word)) score += 10;
-  });
-
-  // =============================
-  // 2️⃣ INTENTI
-  // =============================
-  const vegetarianPrompt = /vegetarian|vegetariana|veg\b|senza carne/.test(promptText);
-  const meatPrompt = /carne|salame|salsiccia|prosciutto|pollo|manzo/.test(promptText);
-  const spicyPrompt = /piccante|spicy|diavola|peperoncino/.test(promptText);
-
-  const isMeatItem = /carne|salame|salsiccia|prosciutto|pollo|manzo|bacon|ham/.test(`${name} ${ingredients}`);
-  const isSpicyItem = /piccante|spicy|diavola|peperoncino/.test(`${name} ${ingredients}`);
-
-  if (vegetarianPrompt && isMeatItem) score -= 50;
-  if (meatPrompt && !isMeatItem) score -= 30;
-  if (spicyPrompt && isSpicyItem) score += 25;
-
-  // =============================
-  // 3️⃣ AI BONUS
-  // =============================
-  if (aiSet.has(item.id)) {
-    score += 15;
-  }
-
-  // =============================
-  // 4️⃣ BOOST COMMERCIALE
-  // =============================
-  const margin = Number(item.margin || 0);
-  if (margin >= 0.6) score += 8;
-  if (item.seasonal === true) score += 6;
-  if (item.isNew === true || item.new === true) score += 5;
-
-  return score;
 }
 
 exports.fallbackIdsFromPrompt = fallbackIdsFromPrompt;
@@ -228,27 +164,13 @@ exports.handler = async (event) => {
       console.error('OpenAI suggestion failed, using fallback:', error.message || error);
     }
 
-    const words = promptWords(prompt);
-    const aiSet = new Set(validIds);
-    const ranked = activeItems
-      .map((item) => ({
-        id: item.id,
-        score: computeScore(item, words, prompt.trim().toLowerCase(), aiSet)
-      }))
-      .sort((a, b) => {
-        const idA = String(a.id ?? '');
-        const idB = String(b.id ?? '');
-        return b.score - a.score || idA.localeCompare(idB);
-      });
+    const aiIds = sanitizeIds(validIds, activeItems);
 
-    const fallbackIds = sanitizeIds(fallbackIdsFromPrompt(prompt.trim(), activeItems), activeItems);
-    let guaranteedIds = ranked
-      .slice(0, MAX_UNIQUE_ITEMS)
-      .map((item) => item.id);
+    let guaranteedIds;
 
-    const allNegative = ranked.every((item) => item.score < -5);
-
-    if (allNegative) {
+    if (aiIds.length > 0) {
+      guaranteedIds = aiIds;
+    } else {
       guaranteedIds = sanitizeIds(
         fallbackIdsFromPrompt(prompt.trim(), activeItems),
         activeItems
@@ -261,8 +183,7 @@ exports.handler = async (event) => {
     console.log('OPENAI RAW CONTENT:', content);
     console.log('PARSED IDS:', parsed?.ids);
     console.log('VALID IDS AFTER FILTER:', validIds);
-    console.log('FALLBACK IDS:', fallbackIds);
-    console.log('ALL NEGATIVE:', allNegative);
+    console.log('AI IDS:', aiIds);
     console.log('FINAL IDS USED:', guaranteedIds);
     console.log('=== AI DEBUG END ===');
 
