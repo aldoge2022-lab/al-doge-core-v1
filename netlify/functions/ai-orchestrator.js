@@ -136,22 +136,6 @@ exports.handler = async (event) => {
   console.log('RAW BODY:', event.body);
   console.log('PROMPT:', prompt);
 
-  if (!process.env.OPENAI_API_KEY || !String(process.env.OPENAI_API_KEY).trim()) {
-    console.log('TOOLS CALLED:', toolsCalled);
-    console.log('FINAL ACTIONS:', finalActions);
-    console.log('FINAL RESPONSE SENT');
-    console.log('=== AI ORCHESTRATOR END ===');
-    return jsonResponse(200, normalizeClientPayload({
-      ok: true,
-      fallback: true,
-      reply: 'AI orchestrator non disponibile: OPENAI_API_KEY mancante.',
-      toolsCalled,
-      finalActions,
-      cartUpdates,
-      message: 'AI orchestrator non disponibile: OPENAI_API_KEY mancante.'
-    }));
-  }
-
   if (!prompt) {
     console.log('TOOLS CALLED:', toolsCalled);
     console.log('FINAL ACTIONS:', finalActions);
@@ -161,6 +145,19 @@ exports.handler = async (event) => {
       ok: false,
       error: 'Prompt mancante',
       message: 'Prompt mancante'
+    }));
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    console.error('OPENAI_API_KEY_MISSING');
+    console.log('TOOLS CALLED:', toolsCalled);
+    console.log('FINAL ACTIONS:', finalActions);
+    console.log('FINAL RESPONSE SENT');
+    console.log('=== AI ORCHESTRATOR END ===');
+    return jsonResponse(200, normalizeClientPayload({
+      cartUpdates: [],
+      message: 'Chiave OpenAI non configurata.',
+      result: 'Chiave OpenAI non configurata.'
     }));
   }
 
@@ -292,19 +289,34 @@ exports.handler = async (event) => {
       message: assistantReply || null
     }));
   } catch (error) {
-    console.error('AI ORCHESTRATOR ERROR:', error);
+    console.error('AI_ORCHESTRATOR_ERROR', {
+      message: error?.message,
+      status: error?.status,
+      code: error?.code,
+      type: error?.type,
+      stack: error?.stack
+    });
+
+    let clientMessage = 'Errore AI temporaneo.';
+    if (error?.status === 401) {
+      clientMessage = 'Errore configurazione AI (chiave non valida).';
+    }
+    if (error?.status === 429) {
+      clientMessage = 'Servizio AI momentaneamente sovraccarico.';
+    }
+    if (error?.status === 400) {
+      clientMessage = 'Richiesta AI non valida.';
+    }
+
     console.log('TOOLS CALLED:', toolsCalled);
     console.log('FINAL ACTIONS:', finalActions);
     console.log('FINAL RESPONSE SENT');
     console.log('=== AI ORCHESTRATOR END ===');
 
     return jsonResponse(200, normalizeClientPayload({
-      ok: false,
-      error: 'Errore AI temporaneo.',
-      toolsCalled,
-      finalActions,
       cartUpdates: [],
-      message: 'Errore AI temporaneo.'
+      message: clientMessage,
+      result: clientMessage
     }));
   }
 };
