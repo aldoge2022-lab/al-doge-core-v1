@@ -1,12 +1,13 @@
 (function () {
+  const DEFAULT_DOUGH = 'normale';
   const promptEl = document.getElementById('aiPrompt');
   const suggestBtn = document.getElementById('aiSuggestBtn');
   const resultEl = document.getElementById('aiResult');
   const quickActionButtons = document.querySelectorAll('[data-ai-quick]');
 
-  function currentSize() {
+  function currentDough() {
     const select = document.getElementById('size-select');
-    if (!select || !select.value) return 'normale';
+    if (!select || !select.value) return DEFAULT_DOUGH;
     return select.value;
   }
 
@@ -20,7 +21,7 @@
       return;
     }
 
-    const size = currentSize();
+    const dough = currentDough();
     cartUpdates.forEach((entry) => {
       if (!entry || entry.type !== 'add') return;
 
@@ -32,7 +33,7 @@
       window.Cart.addItem({
         id: menuItem.id,
         name: menuItem.name,
-        dough: size,
+        dough,
         quantity: qty
       });
     });
