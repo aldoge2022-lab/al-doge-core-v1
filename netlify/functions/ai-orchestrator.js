@@ -53,9 +53,50 @@ async function runToolCall(call) {
 
   if (call.name === 'add_menu_item_to_cart') {
     return {
-      action: 'add_menu_item_to_cart',
-      itemId: String(args.itemId || ''),
-      qty: Number(args.qty) || 1
+      type: 'add',
+      menuItemId: String(args.itemId || ''),
+      qty: Math.max(1, Number(args.qty) || 1)
+    };
+  }
+
+  if (call.name === 'update_item_quantity') {
+    return {
+      type: 'update',
+      menuItemId: String(args.menuItemId || ''),
+      qty: Math.max(1, Number(args.qty) || 1)
+    };
+  }
+
+  if (call.name === 'remove_menu_item_from_cart') {
+    return {
+      type: 'remove',
+      menuItemId: String(args.menuItemId || '')
+    };
+  }
+
+  if (call.name === 'clear_cart') {
+    return { type: 'clear' };
+  }
+
+  if (call.name === 'proceed_to_checkout') {
+    const createCheckout = require('./create-checkout');
+    const checkoutResponse = await createCheckout.handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({
+        cart: Array.isArray(args.cart) ? args.cart : []
+      })
+    });
+    const checkoutPayload = parseBody(checkoutResponse?.body);
+    if (checkoutResponse?.statusCode !== 200) {
+      throw new Error(String(checkoutPayload?.error || 'Checkout non disponibile'));
+    }
+    const url = String(checkoutPayload?.url || checkoutPayload?.checkout_url || '').trim();
+    if (!url) {
+      throw new Error('checkout_url mancante');
+    }
+    return {
+      type: 'checkout',
+      url
     };
   }
 
@@ -76,21 +117,41 @@ async function createOpenAIClient() {
 }
 
 function toCartUpdate(toolName, output) {
-  if (toolName !== 'add_menu_item_to_cart') {
-    return null;
+  if (toolName === 'add_menu_item_to_cart' || toolName === 'update_item_quantity') {
+    const menuItemId = String(output?.menuItemId || output?.itemId || '').trim();
+    const qty = Math.max(1, Number(output?.qty) || 1);
+    if (!menuItemId) {
+      return null;
+    }
+
+    return {
+      type: toolName === 'add_menu_item_to_cart' ? 'add' : 'update',
+      menuItemId,
+      qty
+    };
   }
 
-  const menuItemId = String(output?.itemId || '').trim();
-  const qty = Math.max(1, Number(output?.qty) || 1);
-  if (!menuItemId) {
-    return null;
+  if (toolName === 'remove_menu_item_from_cart') {
+    const menuItemId = String(output?.menuItemId || '').trim();
+    if (!menuItemId) {
+      return null;
+    }
+    return { type: 'remove', menuItemId };
   }
 
-  return {
-    type: 'add',
-    menuItemId,
-    qty
-  };
+  if (toolName === 'clear_cart') {
+    return { type: 'clear' };
+  }
+
+  if (toolName === 'proceed_to_checkout') {
+    const url = String(output?.url || '').trim();
+    if (!url) {
+      return null;
+    }
+    return { type: 'checkout', url };
+  }
+
+  return null;
 }
 
 exports.handler = async (event) => {
@@ -182,6 +243,60 @@ exports.handler = async (event) => {
           },
           required: ['itemId']
         }
+      },
+      {
+        type: 'function',
+        name: 'update_item_quantity',
+        description: 'Aggiorna quantità di un item nel carrello',
+        strict: true,
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            menuItemId: { type: 'string' },
+            qty: { type: 'number' }
+          },
+          required: ['menuItemId', 'qty']
+        }
+      },
+      {
+        type: 'function',
+        name: 'remove_menu_item_from_cart',
+        description: 'Rimuove completamente un item dal carrello',
+        strict: true,
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            menuItemId: { type: 'string' }
+          },
+          required: ['menuItemId']
+        }
+      },
+      {
+        type: 'function',
+        name: 'clear_cart',
+        description: 'Svuota completamente il carrello',
+        strict: true,
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {}
+        }
+      },
+      {
+        type: 'function',
+        name: 'proceed_to_checkout',
+        description: 'Crea sessione checkout Stripe e restituisce checkout URL',
+        strict: true,
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            cart: { type: 'array' }
+          },
+          required: ['cart']
+        }
       }
     ];
 
@@ -193,7 +308,7 @@ exports.handler = async (event) => {
           role: 'system',
           content: [{
             type: 'input_text',
-            text: 'Usa solo tool con ID reali del food-core. Non usare nomi ingredienti.'
+            text: 'Usa solo tool con ID reali del food-core. Non usare nomi ingredienti. Se l’utente dice "togli" usa remove_menu_item_from_cart. Se dice "cambia quantità" usa update_item_quantity. Se dice "svuota" usa clear_cart. Se dice "procedi al pagamento" usa proceed_to_checkout.'
           }]
         },
         {
