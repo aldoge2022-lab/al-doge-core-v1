@@ -197,57 +197,63 @@ exports.handler = async (event) => {
     const tools = [
       {
         type: 'function',
-        name: 'create_custom_panino',
-        description: 'Crea un panino custom con ID ingredienti reali del food-core.',
-        strict: true,
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            ingredientIds: { type: 'array', items: { type: 'string' } },
-            impasto: {
-              anyOf: [
-                { type: 'string' },
-                { type: 'null' }
-              ]
+        function: {
+          name: 'create_custom_panino',
+          description: 'Crea un panino custom con ID ingredienti reali del food-core.',
+          strict: true,
+          parameters: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              ingredientIds: { type: 'array', items: { type: 'string' } },
+              impasto: {
+                anyOf: [
+                  { type: 'string' },
+                  { type: 'null' }
+                ]
+              },
+              mozzarella: {
+                anyOf: [
+                  { type: 'string' },
+                  { type: 'null' }
+                ]
+              }
             },
-            mozzarella: {
-              anyOf: [
-                { type: 'string' },
-                { type: 'null' }
-              ]
-            }
-          },
-          required: ['ingredientIds']
+            required: ['ingredientIds']
+          }
         }
       },
       {
         type: 'function',
-        name: 'add_menu_item_to_cart',
-        description: 'Aggiunge un item del menu al carrello.',
-        strict: true,
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            itemId: { type: 'string' },
-            qty: { type: 'number' }
-          },
-          required: ['itemId']
+        function: {
+          name: 'add_menu_item_to_cart',
+          description: 'Aggiunge un item del menu al carrello.',
+          strict: true,
+          parameters: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              itemId: { type: 'string' },
+              qty: { type: 'number' }
+            },
+            required: ['itemId']
+          }
         }
       },
       {
         type: 'function',
-        name: 'suggest_pairing',
-        description: 'Suggerisce abbinamenti a un item del menu.',
-        strict: true,
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            itemId: { type: 'string' }
-          },
-          required: ['itemId']
+        function: {
+          name: 'suggest_pairing',
+          description: 'Suggerisce abbinamenti a un item del menu.',
+          strict: true,
+          parameters: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              itemId: { type: 'string' }
+            },
+            required: ['itemId']
+          }
         }
       }
     ];
