@@ -11,11 +11,13 @@ function read(relativePath) {
 
 test('ai-controller posts prompts to ai-orchestrator netlify function', () => {
   const script = read('public/js/ai-controller.js');
-  assert.ok(script.includes('fetch("/.netlify/functions/ai-orchestrator"'));
-  assert.ok(script.includes('method: "POST"'));
+  assert.match(
+    script,
+    /fetch\("\/\.netlify\/functions\/ai-orchestrator",\s*\{[\s\S]*method:\s*"POST"/
+  );
 });
 
 test('index.html loads ai-controller script with defer', () => {
   const html = read('public/index.html');
-  assert.ok(html.includes('<script defer src="/js/ai-controller.js"></script>'));
+  assert.match(html, /<script\s+defer\s+src="\/js\/ai-controller\.js"><\/script>/);
 });

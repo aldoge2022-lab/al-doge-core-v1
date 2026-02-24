@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const prompt = input.value.trim();
     if (!prompt) return;
 
-    resultBox.innerHTML = "Sto pensando...";
+    resultBox.textContent = "Sto pensando...";
 
     try {
       const response = await fetch("/.netlify/functions/ai-orchestrator", {
@@ -30,12 +30,18 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const data = await response.json();
+      if (!data || typeof data !== "object") {
+        resultBox.textContent = "Risposta ricevuta ma formato non valido.";
+        return;
+      }
 
-      resultBox.innerHTML = data.result || JSON.stringify(data);
+      resultBox.textContent = typeof data.result === "string"
+        ? data.result
+        : "Risposta ricevuta ma formato non valido.";
 
     } catch (err) {
       console.error("AI error:", err);
-      resultBox.innerHTML = "Errore durante la richiesta AI.";
+      resultBox.textContent = "Errore durante la richiesta AI.";
     }
 
   });
