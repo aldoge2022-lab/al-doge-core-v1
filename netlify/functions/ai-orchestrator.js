@@ -258,9 +258,12 @@ exports.handler = async (event) => {
       input: messages,
       tools
     });
+    console.log('OPENAI_RAW_RESPONSE', JSON.stringify(response, null, 2));
+    console.log('OPENAI_OUTPUT', JSON.stringify(response.output, null, 2));
 
     while (toolsCalled.length < MAX_TOOL_CALLS) {
       const pendingCalls = getToolCalls(response);
+      console.log('TOOL_CALLS_DETECTED', JSON.stringify(pendingCalls, null, 2));
       if (!pendingCalls.length) {
         break;
       }
@@ -299,9 +302,13 @@ exports.handler = async (event) => {
         previous_response_id: response.id,
         input: outputs
       });
+      console.log('OPENAI_RAW_RESPONSE', JSON.stringify(response, null, 2));
+      console.log('OPENAI_OUTPUT', JSON.stringify(response.output, null, 2));
     }
 
     const assistantReply = getAssistantReply(response);
+    const assistantMessage = assistantReply || null;
+    console.log('FINAL_ASSISTANT_MESSAGE', assistantMessage);
 
     console.log('TOOLS CALLED:', toolsCalled);
     console.log('FINAL ACTIONS:', finalActions);
@@ -314,7 +321,7 @@ exports.handler = async (event) => {
       toolsCalled,
       finalActions,
       cartUpdates,
-      message: assistantReply || null
+      message: assistantMessage
     }));
   } catch (error) {
     console.error('AI_ORCHESTRATOR_ERROR', {
