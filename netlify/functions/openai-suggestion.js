@@ -144,23 +144,14 @@ function computeScore(item, words, promptText, aiSet) {
   let score = 0;
 
   // =============================
-  // 1️⃣ MATCH DIRETTI SU PAROLE
+  // 1️⃣ MATCH DIRETTI (solo positivi)
   // =============================
   words.forEach((word) => {
     if (!word || word.length < 3) return;
 
-    const inName = name.includes(word);
-    const inIngredients = ingredients.includes(word);
-    const inCategory = category.includes(word);
-
-    if (inIngredients) score += 40;
-    if (inName) score += 30;
-    if (inCategory) score += 10;
-
-    // Penalità per mismatch esplicito
-    if (!inIngredients && !inName && !inCategory) {
-      score -= 15;
-    }
+    if (ingredients.includes(word)) score += 40;
+    if (name.includes(word)) score += 30;
+    if (category.includes(word)) score += 10;
   });
 
   // =============================
@@ -178,7 +169,7 @@ function computeScore(item, words, promptText, aiSet) {
   if (spicyPrompt && isSpicyItem) score += 25;
 
   // =============================
-  // 3️⃣ AI BONUS (assist non dominante)
+  // 3️⃣ AI BONUS
   // =============================
   if (aiSet.has(item.id)) {
     score += 15;
