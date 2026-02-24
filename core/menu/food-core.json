@@ -1,0 +1,34 @@
+{
+  "ingredients": [
+    {
+      "id": "pomodoro",
+      "name": "Pomodoro",
+      "supplement": 1,
+      "allergens": []
+    },
+    {
+      "id": "mozzarella",
+      "name": "Mozzarella",
+      "supplement": 3,
+      "allergens": ["lattosio"]
+    },
+    {
+      "id": "burrata",
+      "name": "Burrata",
+      "supplement": 3,
+      "allergens": ["lattosio"]
+    },
+    {
+      "id": "insalata",
+      "name": "Insalata",
+      "supplement": 1.5,
+      "allergens": []
+    },
+    {
+      "id": "tonno",
+      "name": "Tonno",
+      "supplement": 2.5,
+      "allergens": ["pesce"]
+    }
+  ]
+}
