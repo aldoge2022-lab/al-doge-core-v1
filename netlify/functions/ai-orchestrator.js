@@ -300,11 +300,9 @@ exports.handler = async (event) => {
     let clientMessage = 'Errore AI temporaneo.';
     if (error?.status === 401) {
       clientMessage = 'Errore configurazione AI (chiave non valida).';
-    }
-    if (error?.status === 429) {
+    } else if (error?.status === 429) {
       clientMessage = 'Servizio AI momentaneamente sovraccarico.';
-    }
-    if (error?.status === 400) {
+    } else if (error?.status === 400) {
       clientMessage = 'Richiesta AI non valida.';
     }
 
