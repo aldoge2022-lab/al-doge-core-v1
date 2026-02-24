@@ -121,11 +121,14 @@ exports.handler = async (event) => {
   const cartUpdates = [];
 
   console.log('=== AI ORCHESTRATOR START ===');
+  console.log('METHOD:', event.httpMethod);
+  console.log('RAW BODY:', event.body);
   console.log('PROMPT:', prompt);
 
   if (!process.env.OPENAI_API_KEY || !String(process.env.OPENAI_API_KEY).trim()) {
     console.log('TOOLS CALLED:', toolsCalled);
     console.log('FINAL ACTIONS:', finalActions);
+    console.log('FINAL RESPONSE SENT');
     console.log('=== AI ORCHESTRATOR END ===');
     return jsonResponse(200, {
       ok: true,
@@ -140,6 +143,7 @@ exports.handler = async (event) => {
   if (!prompt) {
     console.log('TOOLS CALLED:', toolsCalled);
     console.log('FINAL ACTIONS:', finalActions);
+    console.log('FINAL RESPONSE SENT');
     console.log('=== AI ORCHESTRATOR END ===');
     return jsonResponse(400, {
       ok: false,
@@ -263,6 +267,7 @@ exports.handler = async (event) => {
 
     console.log('TOOLS CALLED:', toolsCalled);
     console.log('FINAL ACTIONS:', finalActions);
+    console.log('FINAL RESPONSE SENT');
     console.log('=== AI ORCHESTRATOR END ===');
 
     return jsonResponse(200, {
@@ -276,6 +281,7 @@ exports.handler = async (event) => {
     console.error('AI ORCHESTRATOR ERROR:', error);
     console.log('TOOLS CALLED:', toolsCalled);
     console.log('FINAL ACTIONS:', finalActions);
+    console.log('FINAL RESPONSE SENT');
     console.log('=== AI ORCHESTRATOR END ===');
 
     return jsonResponse(200, {
