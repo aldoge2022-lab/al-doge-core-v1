@@ -75,6 +75,24 @@ async function createOpenAIClient() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
+function toCartUpdate(toolName, output) {
+  if (toolName !== 'add_menu_item_to_cart') {
+    return null;
+  }
+
+  const menuItemId = String(output?.itemId || '').trim();
+  const qty = Math.max(1, Number(output?.qty) || 1);
+  if (!menuItemId) {
+    return null;
+  }
+
+  return {
+    type: 'add',
+    menuItemId,
+    qty
+  };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return jsonResponse(405, {
@@ -88,6 +106,7 @@ exports.handler = async (event) => {
   const prompt = String(body.prompt || body.message || '').trim();
   const toolsCalled = [];
   const finalActions = [];
+  const cartUpdates = [];
 
   console.log('=== AI ORCHESTRATOR START ===');
   console.log('PROMPT:', prompt);
@@ -99,7 +118,10 @@ exports.handler = async (event) => {
     return jsonResponse(200, {
       ok: true,
       fallback: true,
-      message: 'AI orchestrator non disponibile: OPENAI_API_KEY mancante.'
+      reply: 'AI orchestrator non disponibile: OPENAI_API_KEY mancante.',
+      toolsCalled,
+      finalActions,
+      cartUpdates
     });
   }
 
@@ -197,6 +219,10 @@ exports.handler = async (event) => {
           const output = await runToolCall(call);
           toolsCalled.push(call.name);
           finalActions.push({ tool: call.name, ok: true });
+          const cartUpdate = toCartUpdate(call.name, output);
+          if (cartUpdate) {
+            cartUpdates.push(cartUpdate);
+          }
           outputs.push({
             type: 'function_call_output',
             call_id: call.call_id,
@@ -231,7 +257,8 @@ exports.handler = async (event) => {
       ok: true,
       reply: assistantReply,
       toolsCalled,
-      finalActions
+      finalActions,
+      cartUpdates
     });
   } catch (error) {
     console.error('AI ORCHESTRATOR ERROR:', error);
@@ -241,7 +268,10 @@ exports.handler = async (event) => {
 
     return jsonResponse(200, {
       ok: false,
-      error: 'AI orchestrator temporaneamente non disponibile'
+      error: 'AI orchestrator temporaneamente non disponibile',
+      toolsCalled,
+      finalActions,
+      cartUpdates
     });
   }
 };

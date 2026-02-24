@@ -97,11 +97,17 @@ function createCustomPanino({
   const impastoOption = impasto !== DEFAULT_IMPASTO
     ? getOptionFromCore(foodCore, ['impasti', 'doughs', 'impasto'], impasto)
     : null;
+  if (impasto !== DEFAULT_IMPASTO && !impastoOption) {
+    throw new Error('Invalid impasto option');
+  }
   const impastoSupplement = impasto !== DEFAULT_IMPASTO ? extractSupplement(impastoOption) : 0;
 
   const mozzarellaOption = mozzarella !== DEFAULT_MOZZARELLA
     ? getOptionFromCore(foodCore, ['mozzarelle', 'mozzarella'], mozzarella)
     : null;
+  if (mozzarella !== DEFAULT_MOZZARELLA && !mozzarellaOption) {
+    throw new Error('Invalid mozzarella option');
+  }
   const mozzarellaSupplement = mozzarella !== DEFAULT_MOZZARELLA ? extractSupplement(mozzarellaOption) : 0;
 
   const ingredientAllergens = calculateAllergens(ingredientIds);
