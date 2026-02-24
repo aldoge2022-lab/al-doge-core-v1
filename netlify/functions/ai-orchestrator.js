@@ -11,6 +11,16 @@ function jsonResponse(statusCode, payload) {
   };
 }
 
+function normalizeClientPayload(payload = {}) {
+  const message = typeof payload.message === 'string' ? payload.message : null;
+  return {
+    ...payload,
+    cartUpdates: Array.isArray(payload.cartUpdates) ? payload.cartUpdates : [],
+    message,
+    result: message
+  };
+}
+
 function tryParseJson(body, fallback) {
   if (typeof body !== 'string') {
     return fallback;
@@ -106,11 +116,12 @@ function toCartUpdate(toolName, output) {
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
-    return jsonResponse(405, {
+    return jsonResponse(405, normalizeClientPayload({
       ok: false,
       code: 'METHOD_NOT_ALLOWED',
-      error: 'Metodo non consentito'
-    });
+      error: 'Metodo non consentito',
+      message: 'Metodo non consentito'
+    }));
   }
 
   const body = tryParseJson(event.body, {});
@@ -130,14 +141,15 @@ exports.handler = async (event) => {
     console.log('FINAL ACTIONS:', finalActions);
     console.log('FINAL RESPONSE SENT');
     console.log('=== AI ORCHESTRATOR END ===');
-    return jsonResponse(200, {
+    return jsonResponse(200, normalizeClientPayload({
       ok: true,
       fallback: true,
       reply: 'AI orchestrator non disponibile: OPENAI_API_KEY mancante.',
       toolsCalled,
       finalActions,
-      cartUpdates
-    });
+      cartUpdates,
+      message: 'AI orchestrator non disponibile: OPENAI_API_KEY mancante.'
+    }));
   }
 
   if (!prompt) {
@@ -145,10 +157,11 @@ exports.handler = async (event) => {
     console.log('FINAL ACTIONS:', finalActions);
     console.log('FINAL RESPONSE SENT');
     console.log('=== AI ORCHESTRATOR END ===');
-    return jsonResponse(400, {
+    return jsonResponse(400, normalizeClientPayload({
       ok: false,
-      error: 'Prompt mancante'
-    });
+      error: 'Prompt mancante',
+      message: 'Prompt mancante'
+    }));
   }
 
   try {
@@ -270,13 +283,14 @@ exports.handler = async (event) => {
     console.log('FINAL RESPONSE SENT');
     console.log('=== AI ORCHESTRATOR END ===');
 
-    return jsonResponse(200, {
+    return jsonResponse(200, normalizeClientPayload({
       ok: true,
       reply: assistantReply,
       toolsCalled,
       finalActions,
-      cartUpdates
-    });
+      cartUpdates,
+      message: assistantReply || null
+    }));
   } catch (error) {
     console.error('AI ORCHESTRATOR ERROR:', error);
     console.log('TOOLS CALLED:', toolsCalled);
@@ -284,12 +298,13 @@ exports.handler = async (event) => {
     console.log('FINAL RESPONSE SENT');
     console.log('=== AI ORCHESTRATOR END ===');
 
-    return jsonResponse(200, {
+    return jsonResponse(200, normalizeClientPayload({
       ok: false,
-      error: 'AI orchestrator temporaneamente non disponibile',
+      error: 'Errore AI temporaneo.',
       toolsCalled,
       finalActions,
-      cartUpdates
-    });
+      cartUpdates: [],
+      message: 'Errore AI temporaneo.'
+    }));
   }
 };
