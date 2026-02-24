@@ -11,11 +11,14 @@ function jsonResponse(statusCode, payload) {
   };
 }
 
-function parseBody(body) {
+function tryParseJson(body, fallback) {
+  if (typeof body !== 'string') {
+    return fallback;
+  }
   try {
-    return JSON.parse(body || '{}');
+    return JSON.parse(body);
   } catch (_) {
-    return {};
+    return fallback;
   }
 }
 
@@ -36,7 +39,7 @@ function parseToolArguments(argumentsJson) {
   }
 }
 
-async function runToolCall(call) {
+async function runToolCall(call, context = {}) {
   const args = parseToolArguments(call.arguments);
   if (call.name === 'create_custom_panino') {
     const ingredientIds = Array.isArray(args.ingredientIds) ? args.ingredientIds : [];
@@ -65,6 +68,14 @@ async function runToolCall(call) {
       itemId: String(args.itemId || ''),
       suggestion: 'Acqua 0.5L'
     };
+  }
+
+  if (call.name === 'proceed_to_checkout') {
+    const { handler: createCheckoutHandler } = require('./create-checkout');
+    return createCheckoutHandler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ cart: Array.isArray(context.cart) ? context.cart : [] })
+    });
   }
 
   return { action: 'noop' };
@@ -102,8 +113,9 @@ exports.handler = async (event) => {
     });
   }
 
-  const body = parseBody(event.body);
-  const prompt = String(body.prompt || body.message || '').trim();
+  const body = tryParseJson(event.body, {});
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+  const cart = Array.isArray(body.cart) ? body.cart : [];
   const toolsCalled = [];
   const finalActions = [];
   const cartUpdates = [];
@@ -216,7 +228,7 @@ exports.handler = async (event) => {
       const outputs = [];
       for (const call of executableCalls) {
         try {
-          const output = await runToolCall(call);
+          const output = await runToolCall(call, { cart });
           toolsCalled.push(call.name);
           finalActions.push({ tool: call.name, ok: true });
           const cartUpdate = toCartUpdate(call.name, output);

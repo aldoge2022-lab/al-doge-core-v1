@@ -91,3 +91,90 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
     }
   }
 });
+
+test('proceed_to_checkout uses frontend cart state', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  const createCheckoutModulePath = require.resolve('../netlify/functions/create-checkout');
+  const originalCreateCheckoutModule = require.cache[createCheckoutModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+  let callIndex = 0;
+  let checkoutPayload = null;
+
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async () => {
+            callIndex += 1;
+            if (callIndex === 1) {
+              return {
+                id: 'resp_checkout_1',
+                output: [
+                  {
+                    type: 'function_call',
+                    name: 'proceed_to_checkout',
+                    call_id: 'call_checkout_1',
+                    arguments: JSON.stringify({})
+                  }
+                ],
+                output_text: ''
+              };
+            }
+
+            return {
+              id: 'resp_checkout_2',
+              output: [],
+              output_text: 'Procedo al pagamento'
+            };
+          }
+        };
+      }
+    }
+  };
+
+  require.cache[createCheckoutModulePath] = {
+    id: createCheckoutModulePath,
+    filename: createCheckoutModulePath,
+    loaded: true,
+    exports: {
+      handler: async (event) => {
+        checkoutPayload = JSON.parse(event.body || '{}');
+        return { statusCode: 200, body: JSON.stringify({ checkout_url: 'https://example.test/checkout' }) };
+      }
+    }
+  };
+
+  const mockCart = [
+    { menuItemId: 'margherita', qty: 2 }
+  ];
+
+  try {
+    const { handler } = require('../netlify/functions/ai-orchestrator');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({
+        prompt: 'Procedi al pagamento',
+        cart: mockCart
+      })
+    });
+
+    const payload = JSON.parse(response.body);
+    assert.equal(payload.ok, true);
+    assert.deepEqual(checkoutPayload, { cart: mockCart });
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+
+    if (originalCreateCheckoutModule) {
+      require.cache[createCheckoutModulePath] = originalCreateCheckoutModule;
+    } else {
+      delete require.cache[createCheckoutModulePath];
+    }
+  }
+});
