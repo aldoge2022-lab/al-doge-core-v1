@@ -14,6 +14,9 @@ test('ai-orchestrator rejects non-POST requests', async () => {
   const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({ httpMethod: 'GET' });
   assert.equal(response.statusCode, 405);
+  const body = JSON.parse(response.body);
+  assert.deepEqual(body.cartUpdates, []);
+  assert.equal(body.message, 'Metodo non consentito');
 });
 
 test('ai-orchestrator returns fallback response when OPENAI_API_KEY is missing', async () => {
@@ -30,6 +33,23 @@ test('ai-orchestrator returns fallback response when OPENAI_API_KEY is missing',
   assert.equal(Array.isArray(body.toolsCalled), true);
   assert.equal(Array.isArray(body.finalActions), true);
   assert.equal(Array.isArray(body.cartUpdates), true);
+  assert.equal(body.message, 'AI orchestrator non disponibile: OPENAI_API_KEY mancante.');
+  assert.equal(body.result, body.message);
+});
+
+test('ai-orchestrator returns normalized payload when prompt is missing', async () => {
+  process.env.OPENAI_API_KEY = 'test-key';
+  const { handler } = require('../netlify/functions/ai-orchestrator');
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ prompt: '   ' })
+  });
+
+  assert.equal(response.statusCode, 400);
+  const body = JSON.parse(response.body);
+  assert.deepEqual(body.cartUpdates, []);
+  assert.equal(body.message, 'Prompt mancante');
+  assert.equal(body.result, body.message);
 });
 
 test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls', async () => {
@@ -83,6 +103,47 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
     const body = JSON.parse(response.body);
     assert.equal(body.ok, true);
     assert.deepEqual(body.cartUpdates, [{ type: 'add', menuItemId: 'margherita', qty: 2 }]);
+    assert.equal(body.message, 'Aggiunto al carrello');
+    assert.equal(body.result, body.message);
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
+});
+
+test('ai-orchestrator catch path returns normalized temporary error', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async () => {
+            throw new Error('boom');
+          }
+        };
+      }
+    }
+  };
+
+  try {
+    const { handler } = require('../netlify/functions/ai-orchestrator');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ prompt: 'ciao' })
+    });
+    const body = JSON.parse(response.body);
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(body.cartUpdates, []);
+    assert.equal(body.message, 'Errore AI temporaneo.');
+    assert.equal(body.result, body.message);
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
