@@ -114,6 +114,9 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
     assert.equal(body.result, body.message);
     assert.equal(requests[0].model, 'gpt-4o-mini-2024-07-18');
     assert.equal(requests[0].input[1].content, 'aggiungi due margherite al carrello');
+    assert.deepEqual(requests[0].tool_choice, { type: 'required' });
+    assert.match(requests[0].input[0].content, /pomodoro: Pomodoro/);
+    assert.match(requests[0].input[0].content, /tonno: Tonno/);
     assert.equal(Array.isArray(requests[0].tools), true);
     assert.deepEqual(requests[0].tools.map((tool) => tool.type), ['function', 'function', 'function']);
     assert.deepEqual(requests[0].tools.map((tool) => tool.name), [
@@ -127,6 +130,54 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
     assert.deepEqual(requests[0].tools[0].parameters.properties.impasto, {
       anyOf: [{ type: 'string' }, { type: 'null' }]
     });
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
+});
+
+test('ai-orchestrator blocks create_custom_panino with invalid model ingredients', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async () => ({
+            id: 'resp_invalid_1',
+            output: [
+              {
+                type: 'tool_call',
+                name: 'create_custom_panino',
+                call_id: 'call_invalid_1',
+                arguments: JSON.stringify({ ingredientIds: ['ingrediente-fake'] })
+              }
+            ]
+          })
+        };
+      }
+    }
+  };
+
+  try {
+    const { handler } = require('../netlify/functions/ai-orchestrator');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ prompt: 'pizza custom con ingrediente inventato' })
+    });
+
+    assert.equal(response.statusCode, 200);
+    const body = JSON.parse(response.body);
+    assert.deepEqual(body.cartUpdates, []);
+    assert.equal(body.message, 'Errore AI temporaneo.');
+    assert.equal(body.result, body.message);
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
