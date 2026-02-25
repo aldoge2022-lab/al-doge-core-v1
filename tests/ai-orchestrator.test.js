@@ -114,6 +114,8 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
     assert.equal(body.result, body.message);
     assert.equal(requests[0].model, 'gpt-4o-mini-2024-07-18');
     assert.equal(requests[0].input[1].content, 'aggiungi due margherite al carrello');
+    assert.equal(requests[0].tool_choice, 'auto');
+    assert.match(requests[0].input[0].content, /DEVI usare il tool add_menu_item_to_cart/);
     assert.equal(Array.isArray(requests[0].tools), true);
     assert.deepEqual(requests[0].tools.map((tool) => tool.type), ['function', 'function', 'function']);
     assert.deepEqual(requests[0].tools.map((tool) => tool.name), [
@@ -127,6 +129,198 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
     assert.deepEqual(requests[0].tools[0].parameters.properties.impasto, {
       anyOf: [{ type: 'string' }, { type: 'null' }]
     });
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
+});
+
+test('margherita genera tool_call add_menu_item_to_cart', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+  let callIndex = 0;
+
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async () => {
+            callIndex += 1;
+            if (callIndex === 1) {
+              return {
+                id: 'resp_margherita_1',
+                output: [{
+                  type: 'tool_call',
+                  name: 'add_menu_item_to_cart',
+                  call_id: 'call_margherita',
+                  arguments: JSON.stringify({ itemId: 'margherita', qty: 1 })
+                }]
+              };
+            }
+            return {
+              id: 'resp_margherita_2',
+              output: [{ type: 'message', content: [{ type: 'output_text', text: 'Fatto' }] }]
+            };
+          }
+        };
+      }
+    }
+  };
+
+  try {
+    const { handler } = require('../netlify/functions/ai-orchestrator');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ prompt: 'margherita' })
+    });
+    const body = JSON.parse(response.body);
+    assert.deepEqual(body.cartUpdates, [{ type: 'add', menuItemId: 'margherita', qty: 1 }]);
+    assert.deepEqual(body.toolsCalled, ['add_menu_item_to_cart']);
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
+});
+
+test('pizza con tonno genera tool_call add_menu_item_to_cart', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+  let callIndex = 0;
+  const requests = [];
+
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async (request) => {
+            requests.push(request);
+            callIndex += 1;
+            if (callIndex === 1) {
+              return {
+                id: 'resp_tonno_1',
+                output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok' }] }]
+              };
+            }
+            if (callIndex === 2) {
+              return {
+                id: 'resp_tonno_2',
+                output: [{
+                  type: 'tool_call',
+                  name: 'add_menu_item_to_cart',
+                  call_id: 'call_tonno',
+                  arguments: JSON.stringify({ itemId: 'tonno-cipolla', qty: 1 })
+                }]
+              };
+            }
+            return {
+              id: 'resp_tonno_3',
+              output: [{ type: 'message', content: [{ type: 'output_text', text: 'Aggiunto' }] }]
+            };
+          }
+        };
+      }
+    }
+  };
+
+  try {
+    const { handler } = require('../netlify/functions/ai-orchestrator');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ prompt: 'pizza con tonno' })
+    });
+    const body = JSON.parse(response.body);
+    assert.deepEqual(body.cartUpdates, [{ type: 'add', menuItemId: 'tonno-cipolla', qty: 1 }]);
+    assert.deepEqual(body.toolsCalled, ['add_menu_item_to_cart']);
+    assert.deepEqual(requests[1].tool_choice, { type: 'required' });
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
+});
+
+test('richiesta generica può rispondere testo senza tool', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async () => ({
+            id: 'resp_generic',
+            output: [{ type: 'message', content: [{ type: 'output_text', text: 'Certo, dimmi pure.' }] }]
+          })
+        };
+      }
+    }
+  };
+
+  try {
+    const { handler } = require('../netlify/functions/ai-orchestrator');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ prompt: 'ciao' })
+    });
+    const body = JSON.parse(response.body);
+    assert.equal(body.message, 'Certo, dimmi pure.');
+    assert.deepEqual(body.cartUpdates, []);
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
+});
+
+test('fallback server-side aggiunge menu item quando non arrivano tool_call', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async () => ({
+            id: 'resp_fallback',
+            output: [{ type: 'message', content: [{ type: 'output_text', text: 'Posso aiutarti a scegliere qualcosa dal menu.' }] }]
+          })
+        };
+      }
+    }
+  };
+
+  try {
+    const { handler } = require('../netlify/functions/ai-orchestrator');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ prompt: 'margherita' })
+    });
+    const body = JSON.parse(response.body);
+    assert.deepEqual(body.cartUpdates, [{ type: 'add', menuItemId: 'margherita', qty: 1 }]);
+    assert.deepEqual(body.toolsCalled, ['add_menu_item_to_cart']);
+    assert.equal(body.message, 'Aggiunto al carrello');
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
