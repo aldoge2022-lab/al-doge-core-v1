@@ -1,3 +1,5 @@
+// [COPIA DA QUI]
+
 const { createCustomPanino } = require('../../core/menu/panino-engine');
 const { validateIngredientIds } = require('../../core/menu/food-engine');
 
@@ -118,11 +120,6 @@ exports.handler = async (event) => {
   const finalActions = [];
   const cartUpdates = [];
 
-  console.log('=== AI ORCHESTRATOR START ===');
-  console.log('METHOD:', event.httpMethod);
-  console.log('RAW BODY:', event.body);
-  console.log('PROMPT:', prompt);
-
   if (!prompt) {
     return jsonResponse(400, normalizeClientPayload({
       ok: false,
@@ -207,8 +204,6 @@ exports.handler = async (event) => {
       tools
     });
 
-    console.log('OPENAI_RAW_RESPONSE', JSON.stringify(response, null, 2));
-
     let assistantMessage = null;
 
     while (toolsCalled.length < MAX_TOOL_CALLS) {
@@ -278,8 +273,6 @@ exports.handler = async (event) => {
     }));
 
   } catch (error) {
-    console.error('AI_ORCHESTRATOR_ERROR', error);
-
     let clientMessage = 'Errore AI temporaneo.';
     if (error?.status === 401) clientMessage = 'Errore configurazione AI (chiave non valida).';
     if (error?.status === 429) clientMessage = 'Servizio AI momentaneamente sovraccarico.';
@@ -291,3 +284,5 @@ exports.handler = async (event) => {
     }));
   }
 };
+
+// [COPIA FINO A QUI]
