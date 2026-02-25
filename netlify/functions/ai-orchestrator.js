@@ -6,6 +6,7 @@ const VEG_KEYWORDS = ['veg', 'vegetar', 'verdur', 'orto'];
 const DESSERT_KEYWORDS = ['dessert', 'dolce', 'tiramisu', 'gelato', 'panna', 'nutella'];
 const DRINK_KEYWORDS = ['drink', 'bevanda', 'acqua', 'birra', 'cola', 'spritz', 'vino', 'bibita'];
 const PROTEIN_KEYWORDS = ['salame', 'prosciutto', 'salsic', 'pollo', 'tonno', 'wurstel', 'bacon', 'carne'];
+const DIRECT_ADD_KEYWORDS = ['aggiungi', 'metti nel carrello', 'ordina'];
 
 function jsonResponse(statusCode, payload) {
   return {
@@ -277,6 +278,58 @@ function mapAiErrorMessage(status) {
   return 'Errore AI temporaneo.';
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function promptContainsExactItemName(prompt, itemName) {
+  const normalizedName = String(itemName || '').trim();
+  if (!normalizedName) return false;
+
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(normalizedName)}([^\\p{L}\\p{N}]|$)`, 'iu');
+  return pattern.test(prompt);
+}
+
+function findDeterministicAddMatch(prompt, catalog) {
+  const normalizedPrompt = String(prompt || '').toLowerCase();
+  if (!DIRECT_ADD_KEYWORDS.some((keyword) => normalizedPrompt.includes(keyword))) {
+    return null;
+  }
+
+  const catalogItems = flattenCatalog(catalog);
+  return catalogItems.find((item) => promptContainsExactItemName(prompt, item?.name)) || null;
+}
+
+function buildUpsellSuggestion(cartAnalysis, upsellCandidate) {
+  if (upsellCandidate) {
+    return {
+      engine: 'revenue-engine-v1',
+      aggressionLevel: aggressionLevel(cartAnalysis),
+      profile: cartAnalysis.profile,
+      cartAnalysis,
+      suggestion: {
+        itemId: upsellCandidate.id,
+        name: upsellCandidate.name,
+        category: upsellCandidate.category,
+        tags: upsellCandidate.tags,
+        price: upsellCandidate.price,
+        marginScore: Number(upsellCandidate.marginScore.toFixed(3)),
+        profileBoost: Number(upsellCandidate.profileBoost.toFixed(3)),
+        cartCompatibility: Number(upsellCandidate.cartCompatibility.toFixed(3)),
+        score: Number(upsellCandidate.score.toFixed(3))
+      }
+    };
+  }
+
+  return {
+    engine: 'revenue-engine-v1',
+    aggressionLevel: aggressionLevel(cartAnalysis),
+    profile: cartAnalysis.profile,
+    cartAnalysis,
+    suggestion: null
+  };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return jsonResponse(405, normalizeClientPayload({
@@ -308,8 +361,38 @@ exports.handler = async (event) => {
   const finalActions = [];
 
   try {
-    const client = await createOpenAIClient();
     const catalog = await loadMenu();
+    const deterministicMatch = findDeterministicAddMatch(prompt, catalog);
+
+    if (deterministicMatch) {
+      const toolCall = {
+        name: 'add_menu_item_to_cart',
+        arguments: JSON.stringify({ itemId: String(deterministicMatch.id), qty: 1 })
+      };
+      const output = await runToolCall(toolCall, { cart, validIngredientIds: [] });
+      const cartUpdate = toCartUpdate(toolCall.name, output);
+      if (cartUpdate) cartUpdates.push(cartUpdate);
+      toolsCalled.push(toolCall.name);
+      finalActions.push({ tool: toolCall.name, ok: true });
+
+      const projectedCart = [...cart, ...cartUpdates.map((update) => ({ menuItemId: update.menuItemId, qty: update.qty }))];
+      const cartAnalysis = analyzeCart(projectedCart, catalog);
+      const upsellCandidate = decideUpsell(cartAnalysis, catalog, projectedCart);
+      const upsellSuggestion = buildUpsellSuggestion(cartAnalysis, upsellCandidate);
+      const assistantReply = `Perfetto! Ho aggiunto ${deterministicMatch.name} al carrello.`;
+
+      return jsonResponse(200, normalizeClientPayload({
+        ok: true,
+        reply: assistantReply,
+        toolsCalled,
+        finalActions,
+        cartUpdates,
+        upsellSuggestion,
+        message: assistantReply
+      }));
+    }
+
+    const client = await createOpenAIClient();
     const ingredients = await loadIngredients();
     const ingredientList = ingredients
       .map((i) => `${i.id}: ${i.name}`)
@@ -438,31 +521,7 @@ ${ingredientList}
           const projectedCart = [...cart, ...cartUpdates.map((update) => ({ menuItemId: update.menuItemId, qty: update.qty }))];
           const cartAnalysis = analyzeCart(projectedCart, catalog);
           const upsellCandidate = decideUpsell(cartAnalysis, catalog, projectedCart);
-          const upsellSuggestion = upsellCandidate
-            ? {
-                engine: 'revenue-engine-v1',
-                aggressionLevel: aggressionLevel(cartAnalysis),
-                profile: cartAnalysis.profile,
-                cartAnalysis,
-                suggestion: {
-                  itemId: upsellCandidate.id,
-                  name: upsellCandidate.name,
-                  category: upsellCandidate.category,
-                  tags: upsellCandidate.tags,
-                  price: upsellCandidate.price,
-                  marginScore: Number(upsellCandidate.marginScore.toFixed(3)),
-                  profileBoost: Number(upsellCandidate.profileBoost.toFixed(3)),
-                  cartCompatibility: Number(upsellCandidate.cartCompatibility.toFixed(3)),
-                  score: Number(upsellCandidate.score.toFixed(3))
-                }
-              }
-            : {
-                engine: 'revenue-engine-v1',
-                aggressionLevel: aggressionLevel(cartAnalysis),
-                profile: cartAnalysis.profile,
-                cartAnalysis,
-                suggestion: null
-              };
+          const upsellSuggestion = buildUpsellSuggestion(cartAnalysis, upsellCandidate);
 
           const enrichedToolOutput = toolCall.name === 'add_menu_item_to_cart'
             ? { ...output, upsellSuggestion }
