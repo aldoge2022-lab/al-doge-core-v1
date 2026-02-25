@@ -393,7 +393,7 @@ ${ingredientList}
       model: 'gpt-4o-mini-2024-07-18',
       input,
       tools,
-      tool_choice: { type: 'required' }
+      tool_choice: 'auto'
     });
 
     let assistantMessage = null;

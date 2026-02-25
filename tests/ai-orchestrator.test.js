@@ -114,7 +114,7 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
     assert.equal(body.result, body.message);
     assert.equal(requests[0].model, 'gpt-4o-mini-2024-07-18');
     assert.equal(requests[0].input[1].content, 'aggiungi due margherite al carrello');
-    assert.deepEqual(requests[0].tool_choice, { type: 'required' });
+    assert.equal(requests[0].tool_choice, 'auto');
     assert.match(requests[0].input[0].content, /pomodoro: Pomodoro/);
     assert.match(requests[0].input[0].content, /tonno: Tonno/);
     assert.equal(Array.isArray(requests[0].tools), true);
