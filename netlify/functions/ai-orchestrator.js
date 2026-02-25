@@ -400,8 +400,20 @@ ${ingredientList}
 
     while (toolsCalled.length < MAX_TOOL_CALLS) {
       const outputs = Array.isArray(response?.output) ? response.output : [];
-      const toolCalls = outputs.filter((output) => output.type === 'tool_call');
-      const messageItem = outputs.find((output) => output.type === 'message');
+      let toolCalls = [];
+      let messageItem = null;
+
+      toolCalls.push(...outputs.filter((output) => output.type === 'tool_call'));
+
+      for (const item of outputs) {
+        if (item.type === 'message') {
+          messageItem = item;
+          if (Array.isArray(item.content)) {
+            const nestedCalls = item.content.filter((contentItem) => contentItem.type === 'tool_call');
+            toolCalls.push(...nestedCalls);
+          }
+        }
+      }
 
       if (toolCalls.length > 0) {
         for (const toolCall of toolCalls) {
