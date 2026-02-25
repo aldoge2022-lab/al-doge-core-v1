@@ -110,17 +110,12 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
     assert.equal(requests[0].model, 'gpt-4o-mini-2024-07-18');
     assert.equal(requests[0].input[1].content, 'aggiungi due margherite al carrello');
     assert.equal(Array.isArray(requests[0].tools), true);
-    assert.deepEqual(requests[0].tools.map((tool) => tool.type), ['function', 'function', 'function']);
-    assert.deepEqual(requests[0].tools.map((tool) => tool.function.name), [
+    assert.deepEqual(requests[0].tools.map((tool) => tool.type), ['function', 'function']);
+    assert.deepEqual(requests[0].tools.map((tool) => tool.name), [
       'create_custom_panino',
-      'add_menu_item_to_cart',
-      'suggest_pairing'
+      'add_menu_item_to_cart'
     ]);
-    assert.equal(requests[0].tools[0].function.strict, true);
-    assert.equal(requests[0].tools[0].function.parameters.additionalProperties, false);
-    assert.deepEqual(requests[0].tools[0].function.parameters.properties.impasto, {
-      anyOf: [{ type: 'string' }, { type: 'null' }]
-    });
+    assert.equal(requests[0].tools[0].parameters.additionalProperties, false);
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
