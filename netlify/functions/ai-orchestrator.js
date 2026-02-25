@@ -22,9 +22,7 @@ function normalizeClientPayload(payload = {}) {
 }
 
 function tryParseJson(body, fallback) {
-  if (typeof body !== 'string') {
-    return fallback;
-  }
+  if (typeof body !== 'string') return fallback;
   try {
     return JSON.parse(body);
   } catch (_) {
@@ -33,14 +31,8 @@ function tryParseJson(body, fallback) {
 }
 
 function parseToolArguments(argumentsJson) {
-  if (!argumentsJson) {
-    return {};
-  }
-
-  if (typeof argumentsJson !== 'string') {
-    return argumentsJson;
-  }
-
+  if (!argumentsJson) return {};
+  if (typeof argumentsJson !== 'string') return argumentsJson;
   try {
     return JSON.parse(argumentsJson);
   } catch (_) {
@@ -50,12 +42,12 @@ function parseToolArguments(argumentsJson) {
 
 async function runToolCall(call, context = {}) {
   const args = parseToolArguments(call.arguments);
+
   if (call.name === 'create_custom_panino') {
     const ingredientIds = Array.isArray(args.ingredientIds) ? args.ingredientIds : [];
     if (!validateIngredientIds(ingredientIds)) {
       throw new Error('Invalid ingredientIds provided');
     }
-
     return createCustomPanino({
       ingredientIds,
       impasto: args.impasto,
@@ -96,15 +88,11 @@ async function createOpenAIClient() {
 }
 
 function toCartUpdate(toolName, output) {
-  if (toolName !== 'add_menu_item_to_cart') {
-    return null;
-  }
+  if (toolName !== 'add_menu_item_to_cart') return null;
 
   const menuItemId = String(output?.itemId || '').trim();
   const qty = Math.max(1, Number(output?.qty) || 1);
-  if (!menuItemId) {
-    return null;
-  }
+  if (!menuItemId) return null;
 
   return {
     type: 'add',
@@ -136,10 +124,6 @@ exports.handler = async (event) => {
   console.log('PROMPT:', prompt);
 
   if (!prompt) {
-    console.log('TOOLS CALLED:', toolsCalled);
-    console.log('FINAL ACTIONS:', finalActions);
-    console.log('FINAL RESPONSE SENT');
-    console.log('=== AI ORCHESTRATOR END ===');
     return jsonResponse(400, normalizeClientPayload({
       ok: false,
       error: 'Prompt mancante',
@@ -148,11 +132,6 @@ exports.handler = async (event) => {
   }
 
   if (!process.env.OPENAI_API_KEY || !String(process.env.OPENAI_API_KEY).trim()) {
-    console.error('OPENAI_API_KEY_MISSING');
-    console.log('TOOLS CALLED:', toolsCalled);
-    console.log('FINAL ACTIONS:', finalActions);
-    console.log('FINAL RESPONSE SENT');
-    console.log('=== AI ORCHESTRATOR END ===');
     return jsonResponse(200, normalizeClientPayload({
       cartUpdates: [],
       message: 'Chiave OpenAI non configurata.',
@@ -162,6 +141,7 @@ exports.handler = async (event) => {
 
   try {
     const client = await createOpenAIClient();
+
     const tools = [
       {
         type: 'function',
@@ -173,16 +153,9 @@ exports.handler = async (event) => {
             type: 'object',
             additionalProperties: false,
             properties: {
-              ingredientIds: {
-                type: 'array',
-                items: { type: 'string' }
-              },
-              impasto: {
-                anyOf: [{ type: 'string' }, { type: 'null' }]
-              },
-              mozzarella: {
-                anyOf: [{ type: 'string' }, { type: 'null' }]
-              }
+              ingredientIds: { type: 'array', items: { type: 'string' } },
+              impasto: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              mozzarella: { anyOf: [{ type: 'string' }, { type: 'null' }] }
             },
             required: ['ingredientIds']
           }
@@ -224,14 +197,8 @@ exports.handler = async (event) => {
     ];
 
     const input = [
-      {
-        role: 'system',
-        content: 'Usa solo tool con ID reali del food-core. Non usare nomi ingredienti.'
-      },
-      {
-        role: 'user',
-        content: prompt
-      }
+      { role: 'system', content: 'Usa solo tool con ID reali del food-core. Non usare nomi ingredienti.' },
+      { role: 'user', content: prompt }
     ];
 
     let response = await client.responses.create({
@@ -239,27 +206,24 @@ exports.handler = async (event) => {
       input,
       tools
     });
+
     console.log('OPENAI_RAW_RESPONSE', JSON.stringify(response, null, 2));
-    console.log('OPENAI_OUTPUT', JSON.stringify(response.output, null, 2));
 
     let assistantMessage = null;
 
     while (toolsCalled.length < MAX_TOOL_CALLS) {
-      const first = response?.output?.[0] || null;
-      console.log('OPENAI_FIRST_OUTPUT', JSON.stringify(first, null, 2));
-      if (!first) {
-        break;
-      }
+      const first = Array.isArray(response?.output) ? response.output[0] : null;
+
+      if (!first) break;
 
       if (first.type === 'tool_call') {
         try {
           const output = await runToolCall(first, { cart, ...parseToolArguments(first.arguments) });
           toolsCalled.push(first.name);
           finalActions.push({ tool: first.name, ok: true });
+
           const cartUpdate = toCartUpdate(first.name, output);
-          if (cartUpdate) {
-            cartUpdates.push(cartUpdate);
-          }
+          if (cartUpdate) cartUpdates.push(cartUpdate);
 
           response = await client.responses.create({
             model: 'gpt-4o-mini-2024-07-18',
@@ -272,7 +236,7 @@ exports.handler = async (event) => {
           });
         } catch (error) {
           toolsCalled.push(first.name);
-          finalActions.push({ tool: first.name, ok: false, error: error.message || 'Tool error' });
+          finalActions.push({ tool: first.name, ok: false, error: error.message });
 
           response = await client.responses.create({
             model: 'gpt-4o-mini-2024-07-18',
@@ -280,30 +244,29 @@ exports.handler = async (event) => {
             input: [{
               type: 'function_call_output',
               call_id: first.call_id,
-              output: JSON.stringify({ error: error.message || 'Tool error' })
+              output: JSON.stringify({ error: error.message })
             }]
           });
         }
 
-        console.log('OPENAI_RAW_RESPONSE', JSON.stringify(response, null, 2));
-        console.log('OPENAI_OUTPUT', JSON.stringify(response.output, null, 2));
         continue;
       }
 
       if (first.type === 'message') {
-        assistantMessage = first.content?.[0]?.text || null;
+        assistantMessage =
+          first.content?.[0]?.text ||
+          response?.output_text ||
+          null;
       }
+
       break;
     }
 
-    const assistantReply = assistantMessage || response?.output_text || null;
-    assistantMessage = assistantReply || null;
-    console.log('FINAL_ASSISTANT_MESSAGE', assistantMessage);
-
-    console.log('TOOLS CALLED:', toolsCalled);
-    console.log('FINAL ACTIONS:', finalActions);
-    console.log('FINAL RESPONSE SENT');
-    console.log('=== AI ORCHESTRATOR END ===');
+    const assistantReply =
+      assistantMessage ||
+      response?.output_text ||
+      (Array.isArray(response?.output) ? response.output[0]?.content?.[0]?.text : null) ||
+      'Non ho capito la richiesta.';
 
     return jsonResponse(200, normalizeClientPayload({
       ok: true,
@@ -311,30 +274,15 @@ exports.handler = async (event) => {
       toolsCalled,
       finalActions,
       cartUpdates,
-      message: assistantMessage
+      message: assistantReply
     }));
+
   } catch (error) {
-    console.error('AI_ORCHESTRATOR_ERROR', {
-      message: error?.message,
-      status: error?.status,
-      code: error?.code,
-      type: error?.type,
-      stack: error?.stack
-    });
+    console.error('AI_ORCHESTRATOR_ERROR', error);
 
     let clientMessage = 'Errore AI temporaneo.';
-    if (error?.status === 401) {
-      clientMessage = 'Errore configurazione AI (chiave non valida).';
-    } else if (error?.status === 429) {
-      clientMessage = 'Servizio AI momentaneamente sovraccarico.';
-    } else if (error?.status === 400) {
-      clientMessage = 'Errore AI temporaneo.';
-    }
-
-    console.log('TOOLS CALLED:', toolsCalled);
-    console.log('FINAL ACTIONS:', finalActions);
-    console.log('FINAL RESPONSE SENT');
-    console.log('=== AI ORCHESTRATOR END ===');
+    if (error?.status === 401) clientMessage = 'Errore configurazione AI (chiave non valida).';
+    if (error?.status === 429) clientMessage = 'Servizio AI momentaneamente sovraccarico.';
 
     return jsonResponse(200, normalizeClientPayload({
       cartUpdates: [],
