@@ -32,31 +32,6 @@ function tryParseJson(body, fallback) {
   }
 }
 
-function getToolCalls(response) {
-  if (!response?.output) return [];
-
-  return response.output
-    .filter((item) => item.type === 'tool_call')
-    .map((item) => ({
-      name: item.name,
-      arguments: JSON.parse(item.arguments || '{}'),
-      call_id: item.call_id
-    }));
-}
-
-function getAssistantReply(response) {
-  if (!response?.output) return null;
-
-  const message = response.output.find((item) => item.type === 'message');
-  if (!message) return null;
-
-  if (Array.isArray(message.content)) {
-    return message.content.map((c) => c.text).join('\n');
-  }
-
-  return message.content || null;
-}
-
 function parseToolArguments(argumentsJson) {
   if (!argumentsJson) {
     return {};
@@ -267,53 +242,62 @@ exports.handler = async (event) => {
     console.log('OPENAI_RAW_RESPONSE', JSON.stringify(response, null, 2));
     console.log('OPENAI_OUTPUT', JSON.stringify(response.output, null, 2));
 
+    let assistantMessage = null;
+
     while (toolsCalled.length < MAX_TOOL_CALLS) {
-      const pendingCalls = getToolCalls(response);
-      console.log('TOOL_CALLS_DETECTED', JSON.stringify(pendingCalls, null, 2));
-      if (!pendingCalls.length) {
+      const first = response?.output?.[0] || null;
+      console.log('OPENAI_FIRST_OUTPUT', JSON.stringify(first, null, 2));
+      if (!first) {
         break;
       }
 
-      const remaining = MAX_TOOL_CALLS - toolsCalled.length;
-      const executableCalls = pendingCalls.slice(0, remaining);
-
-      const outputs = [];
-      for (const call of executableCalls) {
+      if (first.type === 'tool_call') {
         try {
-          const output = await runToolCall(call, { cart });
-          toolsCalled.push(call.name);
-          finalActions.push({ tool: call.name, ok: true });
-          const cartUpdate = toCartUpdate(call.name, output);
+          const output = await runToolCall(first, { cart, ...parseToolArguments(first.arguments) });
+          toolsCalled.push(first.name);
+          finalActions.push({ tool: first.name, ok: true });
+          const cartUpdate = toCartUpdate(first.name, output);
           if (cartUpdate) {
             cartUpdates.push(cartUpdate);
           }
-          outputs.push({
-            type: 'function_call_output',
-            call_id: call.call_id,
-            output: JSON.stringify(output)
+
+          response = await client.responses.create({
+            model: 'gpt-4o-mini-2024-07-18',
+            previous_response_id: response.id,
+            input: [{
+              type: 'function_call_output',
+              call_id: first.call_id,
+              output: JSON.stringify(output)
+            }]
           });
         } catch (error) {
-          toolsCalled.push(call.name);
-          finalActions.push({ tool: call.name, ok: false, error: error.message || 'Tool error' });
-          outputs.push({
-            type: 'function_call_output',
-            call_id: call.call_id,
-            output: JSON.stringify({ error: error.message || 'Tool error' })
+          toolsCalled.push(first.name);
+          finalActions.push({ tool: first.name, ok: false, error: error.message || 'Tool error' });
+
+          response = await client.responses.create({
+            model: 'gpt-4o-mini-2024-07-18',
+            previous_response_id: response.id,
+            input: [{
+              type: 'function_call_output',
+              call_id: first.call_id,
+              output: JSON.stringify({ error: error.message || 'Tool error' })
+            }]
           });
         }
+
+        console.log('OPENAI_RAW_RESPONSE', JSON.stringify(response, null, 2));
+        console.log('OPENAI_OUTPUT', JSON.stringify(response.output, null, 2));
+        continue;
       }
 
-      response = await client.responses.create({
-        model: 'gpt-4o-mini-2024-07-18',
-        previous_response_id: response.id,
-        input: outputs
-      });
-      console.log('OPENAI_RAW_RESPONSE', JSON.stringify(response, null, 2));
-      console.log('OPENAI_OUTPUT', JSON.stringify(response.output, null, 2));
+      if (first.type === 'message') {
+        assistantMessage = first.content?.[0]?.text || null;
+      }
+      break;
     }
 
-    const assistantReply = getAssistantReply(response);
-    const assistantMessage = assistantReply || null;
+    const assistantReply = assistantMessage || response?.output_text || null;
+    assistantMessage = assistantReply || null;
     console.log('FINAL_ASSISTANT_MESSAGE', assistantMessage);
 
     console.log('TOOLS CALLED:', toolsCalled);
