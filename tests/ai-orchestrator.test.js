@@ -139,6 +139,76 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
   }
 });
 
+test('ai-orchestrator parses nested tool calls inside message content', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+  let callIndex = 0;
+  const requests = [];
+
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async (request) => {
+            requests.push(request);
+            callIndex += 1;
+            if (callIndex === 1) {
+              return {
+                id: 'resp_nested_1',
+                output: [
+                  {
+                    type: 'message',
+                    content: [
+                      {
+                        type: 'tool_call',
+                        name: 'add_menu_item_to_cart',
+                        call_id: 'call_nested_1',
+                        arguments: JSON.stringify({ itemId: 'margherita', qty: 1 })
+                      }
+                    ]
+                  }
+                ]
+              };
+            }
+
+            return {
+              id: 'resp_nested_2',
+              output: [
+                {
+                  type: 'message',
+                  content: [{ type: 'output_text', text: 'Aggiunto al carrello (nested)' }]
+                }
+              ]
+            };
+          }
+        };
+      }
+    }
+  };
+
+  try {
+    const { handler } = require('../netlify/functions/ai-orchestrator');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ prompt: 'aggiungi una margherita' })
+    });
+
+    assert.equal(response.statusCode, 200);
+    const body = JSON.parse(response.body);
+    assert.deepEqual(body.cartUpdates, [{ type: 'add', menuItemId: 'margherita', qty: 1 }]);
+    assert.equal(requests[1].input[0].call_id, 'call_nested_1');
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
+});
+
 
 
 test('ai-orchestrator accepts tool call identifier variants id and tool_call_id', async () => {
