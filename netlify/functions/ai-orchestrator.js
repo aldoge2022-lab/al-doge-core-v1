@@ -1,5 +1,6 @@
 const { createCustomPanino } = require('../../core/menu/panino-engine');
 const { validateIngredientIds } = require('../../core/menu/food-engine');
+const catalog = require('../../data/catalog');
 
 const MAX_TOOL_CALLS = 3;
 
@@ -42,6 +43,30 @@ function parseArgs(args) {
     }
   }
   return args;
+}
+
+function normalizeText(text) {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function findMenuItemIdFromPrompt(prompt) {
+  const text = normalizeText(prompt);
+  if (!text) return null;
+
+  const activeItems = (catalog.menu || []).filter((item) => item && item.active !== false && item.id);
+  for (const item of activeItems) {
+    const itemId = normalizeText(item.id);
+    const itemName = normalizeText(item.name);
+    if ((itemId && text.includes(itemId)) || (itemName && text.includes(itemName))) {
+      return String(item.id);
+    }
+  }
+
+  return null;
 }
 
 async function createOpenAIClient() {
@@ -132,6 +157,8 @@ exports.handler = async (event) => {
   const cartUpdates = [];
   const toolsCalled = [];
   const finalActions = [];
+  const matchedMenuItemId = findMenuItemIdFromPrompt(prompt);
+  let requiredToolChoiceRetried = false;
 
   try {
     const client = await createOpenAIClient();
@@ -185,14 +212,28 @@ exports.handler = async (event) => {
     ];
 
     const input = [
-      { role: 'system', content: 'Usa solo tool con ID reali del food-core.' },
+      {
+        role: 'system',
+        content: `
+Se l'utente chiede una pizza o prodotto esistente nel menu,
+DEVI usare il tool add_menu_item_to_cart con itemId corretto.
+
+Se l'utente chiede una combinazione personalizzata,
+DEVI usare create_custom_panino.
+
+Non rispondere solo con testo quando puoi usare un tool.
+Non inventare ID.
+Usa esclusivamente tool validi.
+`
+      },
       { role: 'user', content: prompt }
     ];
 
     let response = await client.responses.create({
       model: 'gpt-4o-mini-2024-07-18',
       input,
-      tools
+      tools,
+      tool_choice: 'auto'
     });
 
     let assistantMessage = null;
@@ -201,6 +242,7 @@ exports.handler = async (event) => {
       const outputs = Array.isArray(response?.output) ? response.output : [];
       const toolCalls = outputs.filter((output) => output.type === 'tool_call');
       const messageItem = outputs.find((output) => output.type === 'message');
+      const isFirstResponseWithoutToolCall = toolsCalled.length === 0 && toolCalls.length === 0;
 
       if (toolCalls.length > 0) {
         for (const toolCall of toolCalls) {
@@ -228,6 +270,29 @@ exports.handler = async (event) => {
 
       if (messageItem) {
         assistantMessage = messageItem.content?.[0]?.text || null;
+      }
+
+      if (isFirstResponseWithoutToolCall && !requiredToolChoiceRetried) {
+        requiredToolChoiceRetried = true;
+        response = await client.responses.create({
+          model: 'gpt-4o-mini-2024-07-18',
+          input,
+          tools,
+          tool_choice: { type: 'required' }
+        });
+        continue;
+      }
+
+      if (isFirstResponseWithoutToolCall && matchedMenuItemId) {
+        const output = await runToolCall({
+          name: 'add_menu_item_to_cart',
+          arguments: JSON.stringify({ itemId: matchedMenuItemId, qty: 1 })
+        }, { cart });
+        toolsCalled.push('add_menu_item_to_cart');
+        finalActions.push({ tool: 'add_menu_item_to_cart', ok: true, fallback: true });
+        const cartUpdate = toCartUpdate('add_menu_item_to_cart', output);
+        if (cartUpdate) cartUpdates.push(cartUpdate);
+        assistantMessage = 'Aggiunto al carrello';
       }
 
       break;
