@@ -11,11 +11,11 @@ function jsonResponse(statusCode, payload) {
   };
 }
 
-function tryParseJson(body, fallback = {}) {
+function tryParseJson(body) {
   try {
     return JSON.parse(body);
   } catch {
-    return fallback;
+    return {};
   }
 }
 
@@ -88,32 +88,30 @@ exports.handler = async (event) => {
     const tools = [
       {
         type: "function",
-        function: {
-          name: "create_custom_panino",
-          parameters: {
-            type: "object",
-            properties: {
-              ingredientIds: {
-                type: "array",
-                items: { type: "string" }
-              }
-            },
-            required: ["ingredientIds"]
-          }
+        name: "create_custom_panino",
+        description: "Crea panino custom con ingredientIds validi",
+        parameters: {
+          type: "object",
+          properties: {
+            ingredientIds: {
+              type: "array",
+              items: { type: "string" }
+            }
+          },
+          required: ["ingredientIds"]
         }
       },
       {
         type: "function",
-        function: {
-          name: "add_menu_item_to_cart",
-          parameters: {
-            type: "object",
-            properties: {
-              itemId: { type: "string" },
-              qty: { type: "number" }
-            },
-            required: ["itemId"]
-          }
+        name: "add_menu_item_to_cart",
+        description: "Aggiunge item al carrello",
+        parameters: {
+          type: "object",
+          properties: {
+            itemId: { type: "string" },
+            qty: { type: "number" }
+          },
+          required: ["itemId"]
         }
       }
     ];
