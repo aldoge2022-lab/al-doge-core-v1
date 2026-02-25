@@ -75,6 +75,7 @@ function calculateAllergens(ingredientIds) {
 }
 
 module.exports = {
+  getIngredients,
   validateIngredientIds,
   calculateSupplements,
   calculateAllergens,

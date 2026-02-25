@@ -1,5 +1,5 @@
 const { createCustomPanino } = require('../../core/menu/panino-engine');
-const { validateIngredientIds } = require('../../core/menu/food-engine');
+const { validateIngredientIds, getIngredients } = require('../../core/menu/food-engine');
 
 const MAX_TOOL_CALLS = 3;
 
@@ -49,6 +49,14 @@ async function createOpenAIClient() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
+async function loadMenu() {
+  return require('../../data/catalog');
+}
+
+async function loadIngredients() {
+  return getIngredients();
+}
+
 function toCartUpdate(toolName, output) {
   if (toolName !== 'add_menu_item_to_cart') return null;
 
@@ -59,11 +67,14 @@ function toCartUpdate(toolName, output) {
   };
 }
 
-async function runToolCall(toolCall, { cart }) {
+async function runToolCall(toolCall, { cart, validIngredientIds }) {
   const args = parseArgs(toolCall.arguments);
 
   if (toolCall.name === 'create_custom_panino') {
     const ingredientIds = Array.isArray(args.ingredientIds) ? args.ingredientIds : [];
+    if (!ingredientIds.every((id) => validIngredientIds.includes(id))) {
+      throw new Error('Invalid ingredient from model');
+    }
     if (!validateIngredientIds(ingredientIds)) {
       throw new Error('Invalid ingredientIds');
     }
@@ -135,6 +146,12 @@ exports.handler = async (event) => {
 
   try {
     const client = await createOpenAIClient();
+    const catalog = await loadMenu();
+    const ingredients = await loadIngredients();
+    const ingredientList = ingredients
+      .map((i) => `${i.id}: ${i.name}`)
+      .join('\n');
+    const validIngredientIds = ingredients.map((i) => i.id);
 
     const tools = [
       {
@@ -185,14 +202,35 @@ exports.handler = async (event) => {
     ];
 
     const input = [
-      { role: 'system', content: 'Usa solo tool con ID reali del food-core.' },
+      {
+        role: 'system',
+        content: `
+Sei l'orchestrator ufficiale di AL DOGE.
+
+Puoi:
+- Aggiungere pizze esistenti usando add_menu_item_to_cart
+- Creare pizze personalizzate usando create_custom_panino
+
+Regole obbligatorie:
+- Usa SOLO ingredienti presenti in questo elenco:
+
+${ingredientList}
+
+- Non inventare ingredienti.
+- Non inventare pizze predefinite.
+- Se l’utente chiede “con verdure”, seleziona ingredienti vegetali presenti.
+- Se personalizzi, devi usare create_custom_panino.
+- Non rispondere solo con testo quando puoi usare un tool.
+`
+      },
       { role: 'user', content: prompt }
     ];
 
     let response = await client.responses.create({
       model: 'gpt-4o-mini-2024-07-18',
       input,
-      tools
+      tools,
+      tool_choice: { type: 'required' }
     });
 
     let assistantMessage = null;
@@ -204,7 +242,7 @@ exports.handler = async (event) => {
 
       if (toolCalls.length > 0) {
         for (const toolCall of toolCalls) {
-          const output = await runToolCall(toolCall, { cart });
+          const output = await runToolCall(toolCall, { cart, validIngredientIds });
 
           toolsCalled.push(toolCall.name);
           finalActions.push({ tool: toolCall.name, ok: true });
