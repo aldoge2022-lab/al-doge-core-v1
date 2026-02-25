@@ -139,50 +139,44 @@ exports.handler = async (event) => {
     const tools = [
       {
         type: 'function',
-        function: {
-          name: 'create_custom_panino',
-          strict: true,
-          parameters: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              ingredientIds: { type: 'array', items: { type: 'string' } },
-              impasto: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-              mozzarella: { anyOf: [{ type: 'string' }, { type: 'null' }] }
-            },
-            required: ['ingredientIds']
-          }
+        name: 'create_custom_panino',
+        description: 'Crea un panino personalizzato con ingredienti validi.',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ingredientIds: { type: 'array', items: { type: 'string' } },
+            impasto: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            mozzarella: { anyOf: [{ type: 'string' }, { type: 'null' }] }
+          },
+          required: ['ingredientIds']
         }
       },
       {
         type: 'function',
-        function: {
-          name: 'add_menu_item_to_cart',
-          strict: true,
-          parameters: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              itemId: { type: 'string' },
-              qty: { type: 'number' }
-            },
-            required: ['itemId']
-          }
+        name: 'add_menu_item_to_cart',
+        description: 'Aggiunge un elemento del menu al carrello.',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            itemId: { type: 'string' },
+            qty: { type: 'number' }
+          },
+          required: ['itemId']
         }
       },
       {
         type: 'function',
-        function: {
-          name: 'suggest_pairing',
-          strict: true,
-          parameters: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              itemId: { type: 'string' }
-            },
-            required: ['itemId']
-          }
+        name: 'suggest_pairing',
+        description: 'Suggerisce un abbinamento per un elemento del menu.',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            itemId: { type: 'string' }
+          },
+          required: ['itemId']
         }
       }
     ];
