@@ -405,6 +405,16 @@ ${ingredientList}
 
       if (toolCalls.length > 0) {
         for (const toolCall of toolCalls) {
+          const callId =
+            toolCall?.call_id ||
+            toolCall?.id ||
+            toolCall?.tool_call_id;
+
+          if (!callId) {
+            console.error('[ai-orchestrator] missing tool call identifier', { toolCall });
+            throw new Error(`Missing tool call identifier for tool ${toolCall?.name || 'unknown'}`);
+          }
+
           const output = await runToolCall(toolCall, { cart, validIngredientIds });
 
           toolsCalled.push(toolCall.name);
@@ -451,7 +461,7 @@ ${ingredientList}
             previous_response_id: response.id,
             input: [{
               type: 'function_call_output',
-              call_id: toolCall.call_id,
+              call_id: callId,
               output: JSON.stringify(enrichedToolOutput)
             }]
           });

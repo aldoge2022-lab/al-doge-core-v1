@@ -139,6 +139,78 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
   }
 });
 
+
+
+test('ai-orchestrator accepts tool call identifier variants id and tool_call_id', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+
+  try {
+    for (const [identifierField, identifierValue] of [
+      ['id', 'call_from_id'],
+      ['tool_call_id', 'call_from_tool_call_id']
+    ]) {
+      delete require.cache[modulePath];
+      const requests = [];
+      let callIndex = 0;
+
+      require.cache[openaiModulePath] = {
+        id: openaiModulePath,
+        filename: openaiModulePath,
+        loaded: true,
+        exports: class OpenAI {
+          constructor() {
+            this.responses = {
+              create: async (request) => {
+                requests.push(request);
+                callIndex += 1;
+
+                if (callIndex === 1) {
+                  return {
+                    id: 'resp_variant_1',
+                    output: [
+                      {
+                        type: 'tool_call',
+                        name: 'add_menu_item_to_cart',
+                        [identifierField]: identifierValue,
+                        arguments: JSON.stringify({ itemId: 'margherita', qty: 1 })
+                      }
+                    ]
+                  };
+                }
+
+                return {
+                  id: 'resp_variant_2',
+                  output: [
+                    {
+                      type: 'message',
+                      content: [{ type: 'output_text', text: 'ok' }]
+                    }
+                  ]
+                };
+              }
+            };
+          }
+        }
+      };
+
+      const { handler } = require('../netlify/functions/ai-orchestrator');
+      const response = await handler({
+        httpMethod: 'POST',
+        body: JSON.stringify({ prompt: 'aggiungi margherita' })
+      });
+
+      assert.equal(response.statusCode, 200);
+      assert.equal(requests[1].input[0].call_id, identifierValue);
+    }
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
+});
 test('ai-orchestrator blocks create_custom_panino with invalid model ingredients', async () => {
   const originalOpenAIModule = require.cache[openaiModulePath];
   process.env.OPENAI_API_KEY = 'test-key';
