@@ -14,4 +14,4 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
-      - run: node netlify/functions/ai-orchestrator.js
+      - run: node netlify/functions/orchestrator-v2.js

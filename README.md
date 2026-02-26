@@ -12,12 +12,11 @@ al-doge-core-v1
 │       └── catalog.js
 ├── netlify/
 │   └── functions/
+│       ├── orchestrator-v2.js
 │       ├── create-checkout.js
-│       ├── openai-suggestion.js
-│       ├── ordine-ai.js
 │       └── stripe-webhook.js
 ├── tests/
-│   └── ordine-ai.test.js
+│   └── orchestrator-v2.test.js
 ├── netlify.toml
 └── package.json
 ```
