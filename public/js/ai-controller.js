@@ -39,9 +39,10 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      const hasMainItem = !!(data.mainItem && data.mainItem.id);
-      const isAddToCartAction = data.ok === true && data.action === "add_to_cart";
-      const canAddToCart = isAddToCartAction && hasMainItem;
+      const hasValidMainItem = !!(data.mainItem && data.mainItem.id);
+      const hasValidUpsell = !!(data.upsell && data.upsell.id);
+      const isAddToCartAction = !!data.ok && data.action === "add_to_cart";
+      const canAddToCart = isAddToCartAction && hasValidMainItem;
 
       if (canAddToCart) {
         if (typeof addToCart === "function") {
@@ -51,7 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
-      if (data.upsell && data.upsell.id && hasMainItem) {
+      if (hasValidUpsell && hasValidMainItem) {
         window.aiSessionState = {
           lastMainItemId: data.mainItem.id,
           lastUpsellId: data.upsell.id,
