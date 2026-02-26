@@ -30,9 +30,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const data = await response.json();
-      const replyText = typeof data?.reply === "string"
-        ? data.reply
-        : (typeof data?.response === "string" ? data.response : null);
+      let replyText = null;
+      if (typeof data?.reply === "string") {
+        replyText = data.reply;
+      } else if (typeof data?.response === "string") {
+        replyText = data.response;
+      }
 
       if (!data || !replyText) {
         resultBox.textContent = "Errore durante la richiesta AI.";
