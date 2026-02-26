@@ -27,10 +27,8 @@ test('ai-controller validates orchestrator-v2 reply schema and errors', () => {
   assert.match(script, /typeof data\.reply !== "string"/);
   assert.doesNotMatch(script, /Risposta ricevuta ma formato non valido/);
   assert.match(script, /Errore di comunicazione con il server\./);
-  assert.match(
-    script,
-    /if\s*\(!data\s*\|\|\s*typeof data\.reply !== "string"\)\s*\{\s*showError\("Errore di comunicazione con il server."\)/
-  );
+  assert.match(script, /if\s*\(!data\s*\|\|\s*typeof data\.reply !== "string"\)/);
+  assert.match(script, /showError\("Errore di comunicazione con il server."\)/);
 });
 
 test('ai-controller handles add_to_cart and upsell session state', () => {

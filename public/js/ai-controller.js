@@ -43,8 +43,14 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      if (data.ok === true && data.action === "add_to_cart" && data.mainItem && data.mainItem.id && typeof addToCart === "function") {
-        addToCart(data.mainItem);
+      const canAddToCart = data.ok === true && data.action === "add_to_cart" && data.mainItem && data.mainItem.id;
+
+      if (canAddToCart) {
+        if (typeof addToCart === "function") {
+          addToCart(data.mainItem);
+        } else {
+          console.warn("addToCart non disponibile");
+        }
       }
 
       if (data.upsell && data.upsell.id && data.mainItem && data.mainItem.id) {
