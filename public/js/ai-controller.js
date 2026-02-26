@@ -13,10 +13,6 @@ document.addEventListener("DOMContentLoaded", () => {
     resultBox.textContent = message;
   }
 
-  function showError(message) {
-    setResult(message);
-  }
-
   btn.addEventListener("click", async () => {
 
     const prompt = input.value.trim();
@@ -39,7 +35,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await response.json();
       if (!data || typeof data.reply !== "string") {
-        showError("Errore di comunicazione con il server.");
+        setResult("Errore di comunicazione con il server.");
         return;
       }
 
@@ -67,7 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     } catch (err) {
       console.error("AI error:", err);
-      showError("Errore durante la richiesta AI.");
+      setResult("Errore durante la richiesta AI.");
     }
 
   });
