@@ -30,14 +30,39 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const data = await response.json();
-      if (!data || typeof data !== "object") {
-        resultBox.textContent = "Risposta ricevuta ma formato non valido.";
+      let replyText = null;
+      if (typeof data?.reply === "string") {
+        replyText = data.reply;
+      } else if (typeof data?.response === "string") {
+        replyText = data.response;
+      }
+
+      if (!data || !replyText) {
+        resultBox.textContent = "Errore durante la richiesta AI.";
         return;
       }
 
-      resultBox.textContent = typeof data.result === "string"
-        ? data.result
-        : "Risposta ricevuta ma formato non valido.";
+      resultBox.textContent = replyText;
+
+      if (data.ok === false) {
+        return;
+      }
+
+      if (data.action === "add_to_cart") {
+        if (typeof window.addToCart === "function" && data.mainItem) {
+          window.addToCart(data.mainItem);
+        } else {
+          console.warn("Impossibile aggiungere al carrello", { hasHandler: typeof window.addToCart === "function", mainItem: data.mainItem });
+        }
+      }
+
+      if (data.upsell) {
+        try {
+          sessionStorage.setItem("aldoge_ai_conversation", JSON.stringify({ reply: replyText, upsell: data.upsell }));
+        } catch (storageError) {
+          console.warn("Impossibile salvare lo stato conversazione", storageError);
+        }
+      }
 
     } catch (err) {
       console.error("AI error:", err);
