@@ -14,6 +14,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const prompt = input.value.trim();
     if (!prompt) return;
 
+    // Reset solo al nuovo invio
+    resultBox.textContent = "";
+
     resultBox.textContent = "Sto pensando...";
 
     try {
