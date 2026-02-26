@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
         addToCart(data.mainItem);
       }
 
-      if (data.upsell) {
+      if (data.upsell && data.upsell.id) {
         window.aiSessionState = {
           lastMainItemId: data.mainItem?.id || null,
           lastUpsellId: data.upsell.id,
