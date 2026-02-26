@@ -43,7 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      if (data.ok && data.action === "add_to_cart" && data.mainItem && data.mainItem.id && typeof addToCart === "function") {
+      if (data.ok === true && data.action === "add_to_cart" && data.mainItem && data.mainItem.id && typeof addToCart === "function") {
         addToCart(data.mainItem);
       }
 
