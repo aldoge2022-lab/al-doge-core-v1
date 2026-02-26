@@ -39,10 +39,10 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      const hasValidMainItem = !!(data.mainItem && data.mainItem.id);
-      const hasValidUpsell = !!(data.upsell && data.upsell.id);
-      const isAddToCartAction = !!data.ok && data.action === "add_to_cart";
-      const canAddToCart = isAddToCartAction && hasValidMainItem;
+      const hasValidMainItem = data.mainItem && data.mainItem.id;
+      const hasValidUpsell = data.upsell && data.upsell.id;
+      const isAddToCartAction = data.action === "add_to_cart";
+      const canAddToCart = isAddToCartAction && data.ok === true && hasValidMainItem;
 
       if (canAddToCart) {
         if (typeof addToCart === "function") {

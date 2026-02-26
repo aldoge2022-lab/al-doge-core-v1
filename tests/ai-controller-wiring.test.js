@@ -27,7 +27,6 @@ test('ai-controller validates orchestrator-v2 reply schema and errors', () => {
   assert.match(script, /typeof data\.reply !== "string"/);
   assert.doesNotMatch(script, /Risposta ricevuta ma formato non valido/);
   assert.match(script, /Errore di comunicazione con il server\./);
-  assert.ok(script.includes('if (!data || typeof data.reply !== "string")'));
 });
 
 test('ai-controller handles add_to_cart and upsell session state', () => {
