@@ -17,10 +17,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setResult(message);
   }
 
-  function showBotMessage(message) {
-    setResult(message);
-  }
-
   btn.addEventListener("click", async () => {
 
     const prompt = input.value.trim();
@@ -51,7 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
         addToCart(data.mainItem);
       }
 
-      if (data.upsell && data.upsell.id && data.mainItem) {
+      if (data.upsell && data.upsell.id && data.mainItem && data.mainItem.id) {
         window.aiSessionState = {
           lastMainItemId: data.mainItem.id,
           lastUpsellId: data.upsell.id,
@@ -59,7 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
       }
 
-      showBotMessage(data.reply);
+      setResult(data.reply);
 
     } catch (err) {
       console.error("AI error:", err);
