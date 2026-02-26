@@ -20,12 +20,14 @@ document.addEventListener("DOMContentLoaded", () => {
     resultBox.textContent = "Sto pensando...";
 
     try {
+      window.aiSessionState = window.aiSessionState || {};
+
       const response = await fetch("/.netlify/functions/orchestrator-v2", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ prompt, sessionState: window.aiSessionState })
       });
 
       if (!response.ok) {
@@ -51,11 +53,24 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      if (data.action === "add_to_cart") {
-        if (typeof window.addToCart === "function" && data.mainItem) {
+      if (data.ok === true && data.action === null && data.mainItem && data.mainItem.id) {
+        try {
+          window.aiSessionState.lastMainItemId = data.mainItem.id;
+        } catch (storageError) {
+          console.warn("Impossibile salvare lo stato AI", storageError);
+        }
+      }
+
+      if (data.ok === true && data.action === "add_to_cart" && data.mainItem && data.mainItem.id) {
+        if (typeof window.addToCart === "function") {
           window.addToCart(data.mainItem);
         } else {
           console.warn("Impossibile aggiungere al carrello", { hasHandler: typeof window.addToCart === "function", mainItem: data.mainItem });
+        }
+        try {
+          window.aiSessionState.lastMainItemId = null;
+        } catch (storageError) {
+          console.warn("Impossibile aggiornare lo stato AI", storageError);
         }
       }
 

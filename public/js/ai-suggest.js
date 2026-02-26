@@ -74,19 +74,11 @@
         })
       });
       const data = await response.json();
-      if (!response.ok || !data || !data.ok || !data.suggestion) {
+      if (!response.ok || !data || data.ok === false || !data.mainItem || !data.mainItem.id) {
         throw new Error('Errore nella generazione.');
       }
 
-      const payload = data.suggestion;
-      if (!Array.isArray(payload.items)) {
-        showError('Errore nella generazione.');
-        return;
-      }
-      if (payload.items.length === 0) {
-        showError('Nessuna proposta valida.');
-        return;
-      }
+      const payload = { items: [{ id: data.mainItem.id, qty: data.mainItem.qty || 1 }], note: '' };
 
       const validated = validateSuggestion(payload);
       if (!validated.items.length) {
