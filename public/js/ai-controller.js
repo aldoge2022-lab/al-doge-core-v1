@@ -45,8 +45,12 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      if (data.action === "add_to_cart" && typeof window.addToCart === "function" && data.mainItem) {
-        window.addToCart(data.mainItem);
+      if (data.action === "add_to_cart") {
+        if (typeof window.addToCart === "function" && data.mainItem) {
+          window.addToCart(data.mainItem);
+        } else {
+          console.warn("Impossibile aggiungere al carrello", { hasHandler: typeof window.addToCart === "function", mainItem: data.mainItem });
+        }
       }
 
       if (data.upsell) {
