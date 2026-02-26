@@ -10,12 +10,12 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
-test('frontend scripts target ai-orchestrator endpoint', () => {
+test('frontend scripts target orchestrator-v2 endpoint', () => {
   const aiController = read('public/js/ai-controller.js');
   const aiSuggest = read('public/js/ai-suggest.js');
 
-  assert.match(aiController, /\/\.netlify\/functions\/ai-orchestrator/);
-  assert.match(aiSuggest, /\/\.netlify\/functions\/ai-orchestrator/);
+  assert.match(aiController, /\/\.netlify\/functions\/orchestrator-v2/);
+  assert.match(aiSuggest, /\/\.netlify\/functions\/orchestrator-v2/);
 });
 
 test('public js has no openai-suggestion endpoint references', () => {

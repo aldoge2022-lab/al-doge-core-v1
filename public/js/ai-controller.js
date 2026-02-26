@@ -17,7 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
     resultBox.textContent = "Sto pensando...";
 
     try {
-      const response = await fetch("/.netlify/functions/ai-orchestrator", {
+      const response = await fetch("/.netlify/functions/orchestrator-v2", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
