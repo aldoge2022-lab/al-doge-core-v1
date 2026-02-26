@@ -9,6 +9,14 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
+  function showError(message) {
+    resultBox.textContent = message;
+  }
+
+  function appendBotMessage(message) {
+    resultBox.textContent = message;
+  }
+
   btn.addEventListener("click", async () => {
 
     const prompt = input.value.trim();
@@ -30,18 +38,28 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const data = await response.json();
-      if (!data || typeof data !== "object") {
-        resultBox.textContent = "Risposta ricevuta ma formato non valido.";
+      if (!data || typeof data.reply !== "string") {
+        showError("Errore di comunicazione con il server.");
         return;
       }
 
-      resultBox.textContent = typeof data.result === "string"
-        ? data.result
-        : "Risposta ricevuta ma formato non valido.";
+      appendBotMessage(data.reply);
+
+      if (data.ok && data.action === "add_to_cart" && data.mainItem) {
+        addToCart(data.mainItem);
+      }
+
+      if (data.upsell) {
+        window.aiSessionState = {
+          lastMainItemId: data.mainItem?.id || null,
+          lastUpsellId: data.upsell.id,
+          awaitingUpsellConfirmation: true,
+        };
+      }
 
     } catch (err) {
       console.error("AI error:", err);
-      resultBox.textContent = "Errore durante la richiesta AI.";
+      showError("Errore durante la richiesta AI.");
     }
 
   });

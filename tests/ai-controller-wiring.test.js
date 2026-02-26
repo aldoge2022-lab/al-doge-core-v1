@@ -21,3 +21,12 @@ test('index.html loads ai-controller script with defer', () => {
   const html = read('public/index.html');
   assert.match(html, /<script\s+defer\s+src="\/js\/ai-controller\.js"><\/script>/);
 });
+
+test('ai-controller expects reply string and handles cart/upsell actions', () => {
+  const script = read('public/js/ai-controller.js');
+  assert.match(script, /typeof data\.reply !== "string"/);
+  assert.doesNotMatch(script, /Risposta ricevuta ma formato non valido/);
+  assert.match(script, /showError\("Errore di comunicazione con il server."\)/);
+  assert.match(script, /data\.action === "add_to_cart"/);
+  assert.match(script, /window\.aiSessionState\s*=\s*\{/);
+});
