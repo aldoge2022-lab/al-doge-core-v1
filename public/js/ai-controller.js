@@ -47,19 +47,19 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      showBotMessage(data.reply);
-
       if (data.ok && data.action === "add_to_cart" && data.mainItem && data.mainItem.id && typeof addToCart === "function") {
         addToCart(data.mainItem);
       }
 
-      if (data.upsell && data.upsell.id) {
+      if (data.upsell && data.upsell.id && data.mainItem) {
         window.aiSessionState = {
-          lastMainItemId: data.mainItem?.id || null,
+          lastMainItemId: data.mainItem.id,
           lastUpsellId: data.upsell.id,
           awaitingUpsellConfirmation: true,
         };
       }
+
+      showBotMessage(data.reply);
 
     } catch (err) {
       console.error("AI error:", err);
