@@ -9,12 +9,16 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  function showError(message) {
+  function setResult(message) {
     resultBox.textContent = message;
   }
 
+  function showError(message) {
+    setResult(message);
+  }
+
   function showBotMessage(message) {
-    resultBox.textContent = message;
+    setResult(message);
   }
 
   btn.addEventListener("click", async () => {
@@ -45,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       showBotMessage(data.reply);
 
-      if (data.ok && data.action === "add_to_cart" && data.mainItem && typeof addToCart === "function") {
+      if (data.ok && data.action === "add_to_cart" && data.mainItem && data.mainItem.id && typeof addToCart === "function") {
         addToCart(data.mainItem);
       }
 

@@ -22,11 +22,16 @@ test('index.html loads ai-controller script with defer', () => {
   assert.match(html, /<script\s+defer\s+src="\/js\/ai-controller\.js"><\/script>/);
 });
 
-test('ai-controller validates orchestrator-v2 schema and handles cart/upsell actions', () => {
+test('ai-controller validates orchestrator-v2 reply schema and errors', () => {
   const script = read('public/js/ai-controller.js');
   assert.match(script, /typeof data\.reply !== "string"/);
   assert.doesNotMatch(script, /Risposta ricevuta ma formato non valido/);
   assert.match(script, /showError\("Errore di comunicazione con il server."\)/);
+});
+
+test('ai-controller handles add_to_cart and upsell session state', () => {
+  const script = read('public/js/ai-controller.js');
   assert.match(script, /data\.action === "add_to_cart"/);
+  assert.match(script, /data\.mainItem\.id/);
   assert.match(script, /window\.aiSessionState\s*=\s*\{/);
 });
