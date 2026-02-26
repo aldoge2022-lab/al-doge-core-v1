@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
     resultBox.textContent = message;
   }
 
-  function appendBotMessage(message) {
+  function showBotMessage(message) {
     resultBox.textContent = message;
   }
 
@@ -43,9 +43,9 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      appendBotMessage(data.reply);
+      showBotMessage(data.reply);
 
-      if (data.ok && data.action === "add_to_cart" && data.mainItem) {
+      if (data.ok && data.action === "add_to_cart" && data.mainItem && typeof addToCart === "function") {
         addToCart(data.mainItem);
       }
 
