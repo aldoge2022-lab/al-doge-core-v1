@@ -43,7 +43,9 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      const canAddToCart = data.ok === true && data.action === "add_to_cart" && data.mainItem && data.mainItem.id;
+      const hasMainItem = !!(data.mainItem && data.mainItem.id);
+      const isAddToCartAction = data.ok === true && data.action === "add_to_cart";
+      const canAddToCart = isAddToCartAction && hasMainItem;
 
       if (canAddToCart) {
         if (typeof addToCart === "function") {
@@ -53,7 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
-      if (data.upsell && data.upsell.id && data.mainItem && data.mainItem.id) {
+      if (data.upsell && data.upsell.id && hasMainItem) {
         window.aiSessionState = {
           lastMainItemId: data.mainItem.id,
           lastUpsellId: data.upsell.id,
