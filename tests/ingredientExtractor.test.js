@@ -7,7 +7,7 @@ test('extracts ingredients with token-based matching', () => {
   const result = extractValidIngredients('mozzarella e prosciutto');
 
   assert.ok(result.includes('mozzarella'));
-  assert.ok(result.some((id) => id.includes('prosciutto')));
+  assert.ok(result.includes('prosciutto'));
 });
 
 test('returns single match when only one ingredient is present', () => {
@@ -26,8 +26,9 @@ test('returns empty array when no valid ingredients are found', () => {
 test('extracts all valid ingredients present in the text', () => {
   const result = extractValidIngredients('mozzarella prosciutto rucola');
 
-  ['mozzarella', 'prosciutto', 'rucola'].forEach((id) => {
-    assert.ok(result.includes(id));
+  assert.equal(result.length, 3);
+  ['mozzarella', 'prosciutto', 'rucola'].forEach((ingredient) => {
+    assert.ok(result.includes(ingredient));
   });
 });
 
