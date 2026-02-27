@@ -4,31 +4,36 @@
       "id": "pomodoro",
       "name": "Pomodoro",
       "supplement": 1,
-      "allergens": []
+      "allergens": [],
+      "paninoAllowed": true
     },
     {
       "id": "mozzarella",
       "name": "Mozzarella",
       "supplement": 3,
-      "allergens": ["lattosio"]
+      "allergens": ["lattosio"],
+      "paninoAllowed": true
     },
     {
       "id": "burrata",
       "name": "Burrata",
       "supplement": 3,
-      "allergens": ["lattosio"]
+      "allergens": ["lattosio"],
+      "paninoAllowed": true
     },
     {
       "id": "insalata",
       "name": "Insalata",
       "supplement": 1.5,
-      "allergens": []
+      "allergens": [],
+      "paninoAllowed": true
     },
     {
       "id": "tonno",
       "name": "Tonno",
       "supplement": 2.5,
-      "allergens": ["pesce"]
+      "allergens": ["pesce"],
+      "paninoAllowed": false
     }
   ]
 }

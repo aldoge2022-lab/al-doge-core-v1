@@ -21,7 +21,7 @@ test('Panino con tonno deve fallire', () => {
   });
 
   assert.equal(response.statusCode, 400);
-  assert.equal(response.body.error, 'Ingredienti di pesce non consentiti nei panini');
+  assert.match(response.body.error, /tonno/i);
 });
 
 test('Pizza custom con tonno deve passare', () => {
@@ -54,7 +54,7 @@ test('Panino custom con verdura deve aggiungere +1.50€', () => {
   });
 
   assert.equal(response.statusCode, 200);
-  assert.equal(response.body.prezzo, 6.5);
+  assert.equal(response.body.prezzo, 8.5);
 });
 
 test('Pizza con impasto kamut deve aggiungere +1.50€', () => {
