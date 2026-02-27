@@ -15,6 +15,7 @@ const { extractValidIngredients } = require('./orchestrator-v3/services/ingredie
 const { findBestMatches } = require('./orchestrator-v3/services/ingredientMatchEngine');
 const { findPizza, parseQty } = require('./orchestrator-v3/menu-handler');
 
+// Skip direct-name matching when the message describes ingredient modifications (Italian: "con"/"senza").
 const INGREDIENT_MODIFICATION_REGEX = /\b(con|senza)\b/;
 
 const JSON_HEADERS = {
