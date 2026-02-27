@@ -15,6 +15,8 @@ const { extractValidIngredients } = require('./orchestrator-v3/services/ingredie
 const { findBestMatches } = require('./orchestrator-v3/services/ingredientMatchEngine');
 const { findPizza, parseQty } = require('./orchestrator-v3/menu-handler');
 
+const INGREDIENT_MODIFICATION_REGEX = /\b(con|senza)\b/;
+
 const JSON_HEADERS = {
   'Content-Type': 'application/json',
   'Access-Control-Allow-Origin': '*',
@@ -68,7 +70,7 @@ function buildAddItemResponse(orderItem) {
 
 function tryDirectNameMatch(message) {
   const normalized = String(message || '').toLowerCase();
-  if (/\b(con|senza)\b/.test(normalized)) {
+  if (INGREDIENT_MODIFICATION_REGEX.test(normalized)) {
     return null;
   }
 
