@@ -51,7 +51,7 @@ test('returns safe fallback when model does not return tool calls', async () => 
     const { handler } = require('../netlify/functions/orchestrator-v3');
     const response = await handler({
       httpMethod: 'POST',
-      body: JSON.stringify({ message: 'aggiungi una margherita' })
+      body: JSON.stringify({ message: 'ciao, puoi aiutarmi?' })
     });
 
     assert.equal(response.statusCode, 200);
@@ -154,7 +154,7 @@ test('deterministic cart item ignores AI price and computes from catalog', async
     const { handler } = require('../netlify/functions/orchestrator-v3');
     const response = await handler({
       httpMethod: 'POST',
-      body: JSON.stringify({ message: 'aggiungi 2 margherita' })
+      body: JSON.stringify({ message: 'aggiungi 2 pizze a caso con ordine' })
     });
 
     assert.equal(response.statusCode, 200);
@@ -219,6 +219,7 @@ test('creates deterministic custom pizza when no similar match is available', as
   assert.equal(body.ok, true);
   assert.equal(body.cartUpdates.length, 1);
   assert.ok(body.reply.toLowerCase().includes('pizza personalizzata'));
+  assert.ok(!body.reply.includes('Puoi indicarmi il nome esatto della pizza?'));
   assert.ok(body.cartUpdates[0].ingredients.includes('prosciutto'));
   assert.ok(body.cartUpdates[0].ingredients.includes('rucola'));
 });
@@ -235,6 +236,22 @@ test('falls back gracefully when no valid ingredients are present', async () => 
   const body = JSON.parse(response.body);
   assert.equal(body.ok, true);
   assert.equal(body.reply, 'Puoi indicarmi il nome esatto della pizza?');
+});
+
+test('adds menu item directly when name matches and AI is disabled', async () => {
+  delete process.env.OPENAI_API_KEY;
+  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'aggiungi margherita' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.equal(body.ok, true);
+  assert.equal(body.cartUpdates[0].id, 'margherita');
+  assert.equal(body.reply, 'Margherita aggiunta al carrello (1x).');
+  assert.ok(!body.reply.includes('Puoi indicarmi il nome esatto della pizza?'));
 });
 
 test('keeps direct name matching via AI tools unchanged', async () => {
@@ -268,7 +285,7 @@ test('keeps direct name matching via AI tools unchanged', async () => {
     const { handler } = require('../netlify/functions/orchestrator-v3');
     const response = await handler({
       httpMethod: 'POST',
-      body: JSON.stringify({ message: 'aggiungi margherita' })
+      body: JSON.stringify({ message: 'aggiungi margherita con ordine' })
     });
 
     assert.equal(response.statusCode, 200);

@@ -57,6 +57,51 @@ function parseArgs(args) {
   return args;
 }
 
+function buildFallbackResponse() {
+  return validateResponse({
+    ok: true,
+    cartUpdates: [],
+    reply: 'Puoi indicarmi il nome esatto della pizza?'
+  });
+}
+
+function buildAddItemResponse(baseItem) {
+  try {
+    const orderItem = buildOrderItem({
+      baseItem,
+      extraIngredients: [],
+      removedIngredients: [],
+      quantity: 1
+    });
+
+    return {
+      ok: true,
+      cartUpdates: [orderItem],
+      reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
+    };
+  } catch {
+    return null;
+  }
+}
+
+function tryDirectNameMatch(message) {
+  const normalized = String(message || '').toLowerCase();
+  if (/\bcon\b/.test(normalized) || /\bsenza\b/.test(normalized)) {
+    return null;
+  }
+
+  for (const item of CATALOG_ITEMS.values()) {
+    const id = String(item.id || '').toLowerCase();
+    const name = String(item.name || '').toLowerCase();
+
+    if ((id && normalized.includes(id)) || (name && normalized.includes(name))) {
+      return item;
+    }
+  }
+
+  return null;
+}
+
 function buildCustomPizzaFromIngredients({ ingredients, message }) {
   const baseItem = CATALOG_ITEMS.get('margherita') || Array.from(CATALOG_ITEMS.values())[0];
   if (!baseItem) {
@@ -357,30 +402,111 @@ exports.handler = async (event) => {
       return jsonResponse(200, missingMessageResponse);
     }
 
-    const deterministicResponse = runDeterministicIngredientMatch(message);
-  if (deterministicResponse) {
-    const validatedDeterministic = validateResponse(deterministicResponse);
+    const directMatch = tryDirectNameMatch(message);
+    if (directMatch) {
+      const validatedDirect = validateResponse(buildAddItemResponse(directMatch));
 
-    logExecution({
-      intent: 'deterministic_ingredients',
-      toolUsed:
-        validatedDeterministic.cartUpdates.length > 0
-          ? validatedDeterministic.cartUpdates[0]?.type === 'REMOVE_ITEM'
-            ? 'remove_item'
-            : 'add_item'
-          : null,
-      validation: validatedDeterministic.ok ? 'valid' : 'invalid',
-      finalCartDelta: validatedDeterministic.cartUpdates,
-      executionTimeMs: Date.now() - startedAt,
-      status: validatedDeterministic.ok ? 'success' : 'error',
-      error: validatedDeterministic.ok ? null : 'invalid_ingredient_match'
+      logExecution({
+        intent: 'direct_match',
+        toolUsed: 'add_item',
+        validation: validatedDirect.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedDirect.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedDirect.ok ? 'success' : 'error',
+        error: validatedDirect.ok ? null : 'invalid_direct_match'
+      });
+
+      return jsonResponse(200, validatedDirect);
+    }
+
+    const deterministicResponse = runDeterministicIngredientMatch(message);
+    if (deterministicResponse) {
+      const validatedDeterministic = validateResponse(deterministicResponse);
+
+      logExecution({
+        intent: 'deterministic_ingredients',
+        toolUsed:
+          validatedDeterministic.cartUpdates.length > 0
+            ? validatedDeterministic.cartUpdates[0]?.type === 'REMOVE_ITEM'
+              ? 'remove_item'
+              : 'add_item'
+            : null,
+        validation: validatedDeterministic.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedDeterministic.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedDeterministic.ok ? 'success' : 'error',
+        error: validatedDeterministic.ok ? null : 'invalid_ingredient_match'
       });
 
       return jsonResponse(200, validatedDeterministic);
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      logExecution({
+    let fallbackLog = null;
+
+    if (process.env.OPENAI_API_KEY) {
+      const aiResponse = await runLLM(message);
+      const toolCalls = collectToolCalls(aiResponse?.output);
+      const primaryToolCall = toolCalls[0];
+
+      if (!primaryToolCall) {
+        fallbackLog = {
+          intent: 'none',
+          toolUsed: null,
+          validation: 'skipped',
+          finalCartDelta: [],
+          executionTimeMs: Date.now() - startedAt,
+          status: 'success'
+        };
+      } else {
+        const toolConfig = TOOL_CONFIG[primaryToolCall.name];
+        if (!toolConfig) {
+          return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
+        }
+
+        const parsed = parseWith(toolConfig.schema, parseArgs(primaryToolCall.arguments));
+        if (!parsed.ok) {
+          logExecution({
+            intent: primaryToolCall.name,
+            toolUsed: primaryToolCall.name,
+            validation: 'invalid',
+            finalCartDelta: [],
+            executionTimeMs: Date.now() - startedAt,
+            status: 'error',
+            error: 'INVALID_TOOL_PAYLOAD'
+          });
+          return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
+        }
+
+        const execution = toolConfig.executor(parsed.data);
+        if (execution.ok === false && execution.error) {
+          logExecution({
+            intent: primaryToolCall.name,
+            toolUsed: primaryToolCall.name,
+            validation: 'invalid',
+            finalCartDelta: [],
+            executionTimeMs: Date.now() - startedAt,
+            status: 'error',
+            error: execution.error
+          });
+          return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
+        }
+
+        const validatedResponse = validateResponse(execution);
+
+        logExecution({
+          intent: primaryToolCall.name,
+          toolUsed: primaryToolCall.name,
+          validation: validatedResponse.ok ? 'valid' : 'invalid',
+          finalCartDelta: validatedResponse.cartUpdates,
+          executionTimeMs: Date.now() - startedAt,
+          status: validatedResponse.ok ? 'success' : 'error',
+          error: validatedResponse.ok ? null : validatedResponse.reply
+        });
+
+        return jsonResponse(200, validatedResponse);
+      }
+    } else {
+      fallbackLog = {
         intent: 'info',
         toolUsed: null,
         validation: 'skipped',
@@ -388,79 +514,14 @@ exports.handler = async (event) => {
         executionTimeMs: Date.now() - startedAt,
         status: 'success',
         error: null
-      });
-      return jsonResponse(200, { ok: true, cartUpdates: [], reply: 'Puoi indicarmi il nome esatto della pizza?' });
+      };
     }
 
-    const aiResponse = await runLLM(message);
-    const toolCalls = collectToolCalls(aiResponse?.output);
-    const primaryToolCall = toolCalls[0];
-
-    if (!primaryToolCall) {
-      const fallback = validateResponse({
-        ok: true,
-        cartUpdates: [],
-        reply: 'Puoi indicarmi il nome esatto della pizza?'
-      });
-
-      logExecution({
-        intent: 'none',
-        toolUsed: null,
-        validation: 'skipped',
-        finalCartDelta: [],
-        executionTimeMs: Date.now() - startedAt,
-        status: 'success'
-      });
-
-      return jsonResponse(200, fallback);
+    if (fallbackLog) {
+      logExecution(fallbackLog);
     }
 
-    const toolConfig = TOOL_CONFIG[primaryToolCall.name];
-    if (!toolConfig) {
-      return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
-    }
-
-    const parsed = parseWith(toolConfig.schema, parseArgs(primaryToolCall.arguments));
-    if (!parsed.ok) {
-      logExecution({
-        intent: primaryToolCall.name,
-        toolUsed: primaryToolCall.name,
-        validation: 'invalid',
-        finalCartDelta: [],
-        executionTimeMs: Date.now() - startedAt,
-        status: 'error',
-        error: 'INVALID_TOOL_PAYLOAD'
-      });
-      return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
-    }
-
-    const execution = toolConfig.executor(parsed.data);
-    if (execution.ok === false && execution.error) {
-      logExecution({
-        intent: primaryToolCall.name,
-        toolUsed: primaryToolCall.name,
-        validation: 'invalid',
-        finalCartDelta: [],
-        executionTimeMs: Date.now() - startedAt,
-        status: 'error',
-        error: execution.error
-      });
-      return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
-    }
-
-    const validatedResponse = validateResponse(execution);
-
-    logExecution({
-      intent: primaryToolCall.name,
-      toolUsed: primaryToolCall.name,
-      validation: validatedResponse.ok ? 'valid' : 'invalid',
-      finalCartDelta: validatedResponse.cartUpdates,
-      executionTimeMs: Date.now() - startedAt,
-      status: validatedResponse.ok ? 'success' : 'error',
-      error: validatedResponse.ok ? null : validatedResponse.reply
-    });
-
-    return jsonResponse(200, validatedResponse);
+    return jsonResponse(200, buildFallbackResponse());
   } catch (error) {
     const fallback = validateResponse(FALLBACK_RESPONSE);
 
