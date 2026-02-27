@@ -9,11 +9,11 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
-test('ai-controller posts prompts to orchestrator-v2 netlify function', () => {
+test('ai-controller posts prompts to orchestrator-v3 netlify function', () => {
   const script = read('public/js/ai-controller.js');
   assert.match(
     script,
-    /fetch\("\/\.netlify\/functions\/orchestrator-v2",\s*\{[\s\S]*method:\s*"POST"/
+    /fetch\("\/\.netlify\/functions\/orchestrator-v3",\s*\{[\s\S]*method:\s*"POST"/
   );
 });
 

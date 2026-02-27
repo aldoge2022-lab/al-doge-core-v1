@@ -65,7 +65,7 @@
     }
 
     try {
-      const response = await fetch('/.netlify/functions/orchestrator-v2', {
+      const response = await fetch('/.netlify/functions/orchestrator-v3', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
