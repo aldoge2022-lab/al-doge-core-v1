@@ -162,9 +162,9 @@ test('deterministic cart item ignores AI price and computes from catalog', async
     assert.equal(body.ok, true);
     assert.equal(body.cartUpdates[0].id, 'margherita');
     assert.equal(body.cartUpdates[0].qty, 2);
-    assert.equal(body.cartUpdates[0].price >= 600, true);
-    assert.equal(Object.prototype.hasOwnProperty.call(body.cartUpdates[0], 'price'), true);
-    assert.equal(body.cartUpdates[0].ingredients.includes('mozzarella'), true);
+    assert.ok(body.cartUpdates[0].price >= 600);
+    assert.ok(Object.prototype.hasOwnProperty.call(body.cartUpdates[0], 'price'));
+    assert.ok(body.cartUpdates[0].ingredients.includes('mozzarella'));
     assert.equal(requests[0].tools[0].parameters.additionalProperties, false);
   } finally {
     if (originalOpenAIModule) {

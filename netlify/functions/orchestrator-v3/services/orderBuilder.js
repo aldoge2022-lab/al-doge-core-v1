@@ -52,7 +52,7 @@ function buildOrderItem({ baseItem, extraIngredients = [], removedIngredients = 
 
   const extraCost = calculateSupplements(Array.from(extraSet));
   const basePrice = Number(baseItem.price_cents ?? baseItem.base_price_cents ?? baseItem.price ?? 0) || 0;
-  const unitPrice = Number((basePrice + extraCost).toFixed(2));
+  const unitPrice = Math.round((basePrice + extraCost) * 100) / 100;
   const allergens = calculateAllergens(finalIngredients);
 
   return {

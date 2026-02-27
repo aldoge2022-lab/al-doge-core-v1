@@ -7,6 +7,9 @@ function normalizeIngredientId(value) {
     .toLowerCase();
 }
 
+const MAX_INGREDIENTS = 10;
+const MAX_QUANTITY = 10;
+
 const VALID_INGREDIENTS = new Set(
   (Array.isArray(catalog.menu) ? catalog.menu : [])
     .flatMap((item) => [
@@ -30,8 +33,8 @@ const IngredientIdSchema = z
     }
   });
 
-const IngredientArraySchema = z.array(IngredientIdSchema).max(10).default([]);
-const QuantitySchema = z.coerce.number().int().min(1).max(10).default(1);
+const IngredientArraySchema = z.array(IngredientIdSchema).max(MAX_INGREDIENTS).default([]);
+const QuantitySchema = z.coerce.number().int().min(1).max(MAX_QUANTITY).default(1);
 
 const AddItemSchema = z
   .object({
@@ -71,7 +74,7 @@ const TOOL_PARAMETERS = {
     additionalProperties: false,
     properties: {
       itemId: { type: 'string', description: 'ID articolo da catalogo' },
-      quantity: { type: 'integer', minimum: 1, maximum: 10, default: 1 },
+      quantity: { type: 'integer', minimum: 1, maximum: MAX_QUANTITY, default: 1 },
       extraIngredients: {
         type: 'array',
         items: { type: 'string', enum: Array.from(VALID_INGREDIENTS) },
@@ -90,7 +93,7 @@ const TOOL_PARAMETERS = {
     additionalProperties: false,
     properties: {
       itemId: { type: 'string', description: 'ID articolo da catalogo' },
-      quantity: { type: 'integer', minimum: 1, maximum: 10, default: 1 }
+      quantity: { type: 'integer', minimum: 1, maximum: MAX_QUANTITY, default: 1 }
     },
     required: ['itemId']
   },
@@ -99,7 +102,7 @@ const TOOL_PARAMETERS = {
     additionalProperties: false,
     properties: {
       baseItemId: { type: 'string', description: 'ID articolo base da catalogo' },
-      quantity: { type: 'integer', minimum: 1, maximum: 10, default: 1 },
+      quantity: { type: 'integer', minimum: 1, maximum: MAX_QUANTITY, default: 1 },
       extraIngredients: {
         type: 'array',
         items: { type: 'string', enum: Array.from(VALID_INGREDIENTS) },
@@ -146,5 +149,7 @@ module.exports = {
   VALID_INGREDIENTS,
   parseWith,
   toToolParameters,
+  MAX_INGREDIENTS,
+  MAX_QUANTITY,
   normalizeIngredientId
 };
