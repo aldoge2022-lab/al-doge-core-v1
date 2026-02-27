@@ -21,6 +21,8 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type'
 };
 
+const CUSTOMIZATION_KEYWORDS = [' con ', ' senza '];
+
 function jsonResponse(statusCode, payload) {
   return {
     statusCode,
@@ -65,7 +67,7 @@ function buildFallbackResponse() {
   });
 }
 
-function buildAddItemResponse(baseItem) {
+function tryBuildAddItemResponse(baseItem) {
   try {
     const orderItem = buildOrderItem({
       baseItem,
@@ -79,7 +81,8 @@ function buildAddItemResponse(baseItem) {
       cartUpdates: [orderItem],
       reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
     };
-  } catch {
+  } catch (error) {
+    console.error('direct_match_build_error', error);
     return null;
   }
 }
@@ -91,7 +94,7 @@ function tryDirectNameMatch(message) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  const hasCustomizationDirective = normalized.includes(' con ') || normalized.includes(' senza ');
+  const hasCustomizationDirective = CUSTOMIZATION_KEYWORDS.some((keyword) => normalized.includes(keyword));
   if (hasCustomizationDirective) {
     return null;
   }
@@ -415,7 +418,7 @@ exports.handler = async (event) => {
 
     const directMatch = tryDirectNameMatch(message);
     if (directMatch) {
-      const validatedDirect = validateResponse(buildAddItemResponse(directMatch));
+      const validatedDirect = validateResponse(tryBuildAddItemResponse(directMatch));
 
       logExecution({
         intent: 'direct_match',
