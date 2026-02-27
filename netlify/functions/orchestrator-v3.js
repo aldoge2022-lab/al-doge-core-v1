@@ -85,16 +85,23 @@ function buildAddItemResponse(baseItem) {
 }
 
 function tryDirectNameMatch(message) {
-  const normalized = String(message || '').toLowerCase();
-  if (/\bcon\b/.test(normalized) || /\bsenza\b/.test(normalized)) {
+  const normalized = String(message || '')
+    .toLowerCase()
+    .replace(/[.,;:!?]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (normalized.includes(' con ') || normalized.includes(' senza ')) {
     return null;
   }
 
-  for (const item of CATALOG_ITEMS.values()) {
-    const id = String(item.id || '').toLowerCase();
-    const name = String(item.name || '').toLowerCase();
+  const padded = ` ${normalized} `;
 
-    if ((id && normalized.includes(id)) || (name && normalized.includes(name))) {
+  for (const item of CATALOG_ITEMS.values()) {
+    const id = String(item.id || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const name = String(item.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+    if ((id && padded.includes(` ${id} `)) || (name && padded.includes(` ${name} `))) {
       return item;
     }
   }
