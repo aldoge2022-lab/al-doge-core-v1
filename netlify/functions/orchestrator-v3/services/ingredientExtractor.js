@@ -22,9 +22,11 @@ function extractValidIngredients(text) {
       return;
     }
 
-    const escaped = normalizedIngredient.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
-    if (pattern.test(normalizedText)) {
+    const textTokens = normalizedText.split(/\s+/);
+    const ingredientTokens = normalizedIngredient.split(/\s+/);
+
+    const matches = ingredientTokens.every((token) => textTokens.includes(token));
+    if (matches) {
       found.add(normalizedIngredient);
     }
   });
