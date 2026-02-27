@@ -1,5 +1,5 @@
-const { createCustomPanino } = require('../../core/menu/panino-engine');
-const { validateIngredientIds, getIngredients } = require('../../core/menu/food-engine');
+const { buildPanino } = require('../../core/panino');
+const { getIngredients } = require('../../core/menu/food-engine');
 
 const MAX_TOOL_CALLS = 3;
 const VEG_KEYWORDS = ['veg', 'vegetar', 'verdur', 'orto'];
@@ -239,14 +239,11 @@ async function runToolCall(toolCall, { cart, validIngredientIds }) {
     if (!ingredientIds.every((id) => validIngredientIds.includes(id))) {
       throw new Error('Invalid ingredient from model');
     }
-    if (!validateIngredientIds(ingredientIds)) {
-      throw new Error('Invalid ingredientIds');
+    const result = buildPanino(ingredientIds);
+    if (!result.ok) {
+      throw new Error(result.error || 'Invalid ingredientIds');
     }
-    return createCustomPanino({
-      ingredientIds,
-      impasto: args.impasto || undefined,
-      mozzarella: args.mozzarella || undefined
-    });
+    return result;
   }
 
   if (toolCall.name === 'add_menu_item_to_cart') {

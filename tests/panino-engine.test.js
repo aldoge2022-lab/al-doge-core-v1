@@ -1,18 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createCustomPanino } = require('../core/menu/panino-engine');
+const { buildPanino } = require('../core/panino');
 
-test('panino-engine rejects unknown impasto options', () => {
-  assert.throws(
-    () => createCustomPanino({ ingredientIds: ['pomodoro'], impasto: 'impasto-inventato' }),
-    /Invalid impasto option/
-  );
+test('buildPanino rejects ingredient not allowed in panino', () => {
+  const result = buildPanino(['tonno']);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /tonno/i);
 });
 
-test('panino-engine rejects unknown mozzarella options', () => {
-  assert.throws(
-    () => createCustomPanino({ ingredientIds: ['pomodoro'], mozzarella: 'mozzarella-inventata' }),
-    /Invalid mozzarella option/
-  );
+test('buildPanino returns pricing for valid ingredients', () => {
+  const result = buildPanino(['pomodoro', 'mozzarella', 'insalata']);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.ingredientIds, ['pomodoro', 'mozzarella', 'insalata']);
+  assert.equal(result.pricing.total, 8.5);
 });

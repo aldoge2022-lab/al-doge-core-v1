@@ -1,17 +1,8 @@
 const aiRules = require('../../../config/ai-rules');
-
-const CATEGORY_PRICE = {
-  latticini: 3,
-  carne: 2,
-  pesce: 2.5,
-  verdura: 1.5,
-  salsa: 1,
-  base: 0
-};
+const { buildPanino } = require('../../../core/panino');
 
 const VALID_CATEGORIES = new Set(['pizza', 'panino']);
 const DEFAULT_PIZZA_BASE = 5;
-const DEFAULT_PANINO_BASE = 5;
 
 function toMoney(value) {
   const number = Number(value);
@@ -38,9 +29,7 @@ function normalizeIngredientTable(ingredientiTable) {
       return { byName: new Map(), error: 'Tabella ingredienti incompleta: nome, categoria_tecnica o allergeni mancanti' };
     }
 
-    const prezzoExtra = entry?.prezzo_extra !== undefined
-      ? Number(entry.prezzo_extra)
-      : CATEGORY_PRICE[categoriaTecnica];
+    const prezzoExtra = entry?.prezzo_extra !== undefined ? Number(entry.prezzo_extra) : Number.NaN;
 
     if (!Number.isFinite(prezzoExtra)) {
       return { byName: new Map(), error: `Prezzo non valido per ingrediente: ${nome}` };
@@ -66,10 +55,6 @@ function calculateIngredients(ingredientNames, byName, categoriaItem, lactoseFre
     const ingredient = byName.get(ingredientName);
     if (!ingredient) {
       return { error: `Ingrediente non esistente: ${ingredientName}` };
-    }
-
-    if (categoriaItem === 'panino' && aiRules.forbiddenInPanini.includes(ingredient.categoria_tecnica)) {
-      return { error: 'Ingredienti di pesce non consentiti nei panini' };
     }
 
     total += ingredient.prezzo_extra;
@@ -129,12 +114,29 @@ function buildItem({ payload = {}, ingredientiTable = [], impasti = {}, existing
     }
 
     const lactoseFree = Boolean(payload.senza_lattosio || baseItem.senza_lattosio);
+    if (categoriaItem === 'panino') {
+      const panino = buildPanino(ingredienti);
+      if (!panino.ok) return { statusCode: 400, body: { error: panino.error } };
+
+      return {
+        statusCode: 200,
+        body: {
+          item_id: itemId,
+          categoria: categoriaItem,
+          ingredienti: panino.ingredientIds,
+          impasto: null,
+          allergeni: [],
+          prezzo: panino.pricing.total,
+          senza_lattosio: lactoseFree,
+          pricing: panino.pricing
+        }
+      };
+    }
     const calc = calculateIngredients(ingredienti, byName, categoriaItem, lactoseFree);
     if (calc.error) return { statusCode: 400, body: { error: calc.error } };
 
-    const basePrice = categoriaItem === 'pizza' ? DEFAULT_PIZZA_BASE : DEFAULT_PANINO_BASE;
     const impastoPrice = impastoKey ? Number(impasti[impastoKey]) : 0;
-    const prezzo = toMoney(basePrice + calc.prezzoIngredienti + impastoPrice);
+    const prezzo = toMoney(DEFAULT_PIZZA_BASE + calc.prezzoIngredienti + impastoPrice);
     if (prezzo === null) return { statusCode: 400, body: { error: 'Prezzo NaN' } };
 
     return {
@@ -175,13 +177,31 @@ function buildItem({ payload = {}, ingredientiTable = [], impasti = {}, existing
   }
 
   const lactoseFree = Boolean(payload.senza_lattosio);
-  const calc = calculateIngredients(normalizedIngredients, byName, categoria, lactoseFree);
-  if (calc.error) return { statusCode: 400, body: { error: calc.error } };
+  if (categoria === 'panino') {
+    const panino = buildPanino(normalizedIngredients);
+    if (!panino.ok) return { statusCode: 400, body: { error: panino.error } };
 
-  const basePrice = categoria === 'pizza' ? DEFAULT_PIZZA_BASE : DEFAULT_PANINO_BASE;
-  const impastoPrice = impastoKey ? Number(impasti[impastoKey]) : 0;
-  const prezzo = toMoney(basePrice + calc.prezzoIngredienti + impastoPrice);
-  if (prezzo === null) return { statusCode: 400, body: { error: 'Prezzo NaN' } };
+    return {
+      statusCode: 200,
+      body: {
+        categoria,
+        ingredienti: panino.ingredientIds,
+        impasto: null,
+        allergeni: [],
+        prezzo: panino.pricing.total,
+        senza_lattosio: lactoseFree,
+        pricing: panino.pricing
+      }
+    };
+  }
+
+    const calc = calculateIngredients(normalizedIngredients, byName, categoria, lactoseFree);
+    if (calc.error) return { statusCode: 400, body: { error: calc.error } };
+
+    const basePrice = DEFAULT_PIZZA_BASE;
+    const impastoPrice = impastoKey ? Number(impasti[impastoKey]) : 0;
+    const prezzo = toMoney(basePrice + calc.prezzoIngredienti + impastoPrice);
+    if (prezzo === null) return { statusCode: 400, body: { error: 'Prezzo NaN' } };
 
   return {
     statusCode: 200,

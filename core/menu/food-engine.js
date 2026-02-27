@@ -7,9 +7,50 @@ const FOOD_CORE_CANDIDATES = [
   path.resolve(__dirname, '../../data/food-core.json')
 ];
 
+let hasValidated = false;
+
+function validateFoodCoreData(foodCore) {
+  if (hasValidated || process.env.NODE_ENV === 'production') {
+    return;
+  }
+
+  const ingredients = Array.isArray(foodCore?.ingredients) ? foodCore.ingredients : [];
+  const seenIds = new Set();
+
+  for (const ingredient of ingredients) {
+    const id = ingredient?.id;
+    if (!id) {
+      throw new Error('food-core ingredient missing id');
+    }
+
+    if (seenIds.has(id)) {
+      throw new Error(`Duplicate ingredient id detected: ${id}`);
+    }
+    seenIds.add(id);
+
+    const hasSupplement =
+      ingredient.supplement !== undefined ||
+      ingredient.supplementPrice !== undefined ||
+      ingredient.extraPrice !== undefined ||
+      ingredient.price !== undefined;
+
+    if (!hasSupplement) {
+      throw new Error(`Missing supplement for ingredient: ${id}`);
+    }
+
+    if (ingredient.paninoAllowed === undefined) {
+      throw new Error(`Missing paninoAllowed for ingredient: ${id}`);
+    }
+  }
+
+  hasValidated = true;
+}
+
 function getFoodCore() {
   const existingPath = FOOD_CORE_CANDIDATES.find((candidate) => fs.existsSync(candidate));
-  return existingPath ? require(existingPath) : {};
+  const foodCore = existingPath ? require(existingPath) : {};
+  validateFoodCoreData(foodCore);
+  return foodCore;
 }
 
 function getIngredients() {

@@ -1,5 +1,4 @@
-const { createCustomPanino } = require('../../core/menu/panino-engine');
-const { validateIngredientIds } = require('../../core/menu/food-engine');
+const { buildPanino } = require('../../core/panino');
 
 const MAX_TOOL_CALLS = 3;
 
@@ -47,10 +46,29 @@ async function runTool(toolCall, cart) {
 
   if (toolCall.name === "create_custom_panino") {
     const ids = Array.isArray(args.ingredientIds) ? args.ingredientIds : [];
-    if (!validateIngredientIds(ids)) {
-      throw new Error("Invalid ingredientIds");
+    const result = buildPanino(ids);
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        action: null,
+        mainItem: null,
+        upsell: null,
+        reply: result.error
+      };
     }
-    return createCustomPanino({ ingredientIds: ids });
+
+    return {
+      ok: true,
+      action: "ADD",
+      mainItem: {
+        type: "panino",
+        ingredientIds: result.ingredientIds,
+        pricing: result.pricing
+      },
+      upsell: null,
+      reply: "Panino configurato correttamente."
+    };
   }
 
   if (toolCall.name === "add_menu_item_to_cart") {
@@ -144,6 +162,7 @@ exports.handler = async (event) => {
     });
 
     let assistantMessage = null;
+    let operationOk = true;
     let action = null;
     let mainItem = null;
     let upsell = null;
@@ -164,6 +183,15 @@ exports.handler = async (event) => {
             itemId: String(result.itemId),
             qty: Math.max(1, Number(result.qty) || 1)
           };
+        }
+
+        if (toolCall.name === "create_custom_panino") {
+          operationOk = Boolean(result?.ok);
+          action = result?.action ?? null;
+          mainItem = result?.mainItem ?? null;
+          upsell = result?.upsell ?? null;
+          assistantMessage = result?.reply ?? assistantMessage;
+          break;
         }
 
         response = await client.responses.create({
@@ -187,7 +215,7 @@ exports.handler = async (event) => {
     }
 
     return jsonResponse(200, buildResponse({
-      ok: true,
+      ok: operationOk,
       action,
       mainItem,
       upsell,
