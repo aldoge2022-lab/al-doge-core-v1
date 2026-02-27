@@ -383,15 +383,13 @@ exports.handler = async (event) => {
     const directResponse = runDirectMatch(message);
     if (directResponse) {
       const validatedDirect = validateResponse(directResponse);
+      const directCartType = validatedDirect.cartUpdates[0]?.type;
+      const directToolUsed =
+        directCartType === 'REMOVE_ITEM' ? 'remove_item' : directCartType || null;
 
       logExecution({
         intent: 'direct_match',
-        toolUsed:
-          validatedDirect.cartUpdates.length > 0
-            ? validatedDirect.cartUpdates[0]?.type === 'REMOVE_ITEM'
-              ? 'remove_item'
-              : 'add_item'
-            : null,
+        toolUsed: directToolUsed,
         validation: validatedDirect.ok ? 'valid' : 'invalid',
         finalCartDelta: validatedDirect.cartUpdates,
         executionTimeMs: Date.now() - startedAt,
@@ -424,10 +422,10 @@ exports.handler = async (event) => {
       return jsonResponse(200, validatedDeterministic);
     }
 
-    let fallbackLog = null;
+    let fallbackLogData = null;
 
     if (!process.env.OPENAI_API_KEY) {
-      fallbackLog = {
+      fallbackLogData = {
         intent: 'info',
         toolUsed: null,
         validation: 'skipped',
@@ -441,7 +439,7 @@ exports.handler = async (event) => {
       const primaryToolCall = toolCalls[0];
 
       if (!primaryToolCall) {
-        fallbackLog = {
+        fallbackLogData = {
           intent: 'none',
           toolUsed: null,
           validation: 'skipped',
@@ -505,9 +503,9 @@ exports.handler = async (event) => {
       reply: 'Puoi indicarmi il nome esatto della pizza?'
     });
 
-    if (fallbackLog) {
+    if (fallbackLogData) {
       logExecution({
-        ...fallbackLog,
+        ...fallbackLogData,
         executionTimeMs: Date.now() - startedAt
       });
     }
