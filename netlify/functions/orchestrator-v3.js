@@ -13,6 +13,11 @@ const {
 const { buildOrderItem, CATALOG_ITEMS } = require('./orchestrator-v3/services/orderBuilder');
 const { extractValidIngredients } = require('./orchestrator-v3/services/ingredientExtractor');
 const { findBestMatches } = require('./orchestrator-v3/services/ingredientMatchEngine');
+const { findPizza, parseQty } = require('./orchestrator-v3/menu-handler');
+
+// Skip direct-name matching when the message contains Italian prepositions indicating ingredient
+// additions ("con") or removals ("senza"); this intentionally limited set avoids masking ingredient lists.
+const SKIP_DIRECT_MATCH_REGEX = /\b(con|senza)\b/;
 
 const JSON_HEADERS = {
   'Content-Type': 'application/json',
@@ -55,6 +60,44 @@ function parseArgs(args) {
     }
   }
   return args;
+}
+
+function buildAddItemResponse(orderItem) {
+  return {
+    ok: true,
+    cartUpdates: [orderItem],
+    reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
+  };
+}
+
+function tryDirectNameMatch(message) {
+  if (!message) {
+    return null;
+  }
+
+  const normalized = String(message).toLowerCase();
+  if (SKIP_DIRECT_MATCH_REGEX.test(normalized)) {
+    return null;
+  }
+
+  const pizza = findPizza(normalized);
+  if (!pizza) {
+    return null;
+  }
+
+  const quantity = parseQty(normalized);
+
+  try {
+    const orderItem = buildOrderItem({
+      baseItem: pizza,
+      extraIngredients: [],
+      removedIngredients: [],
+      quantity
+    });
+    return orderItem;
+  } catch {
+    return null;
+  }
 }
 
 function buildCustomPizzaFromIngredients({ ingredients, message }) {
@@ -118,11 +161,7 @@ function runDeterministicIngredientMatch(message) {
       quantity: 1
     });
 
-    return {
-      ok: true,
-      cartUpdates: [orderItem],
-      reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
-    };
+    return buildAddItemResponse(orderItem);
   }
 
   if (Array.isArray(matches.similar) && matches.similar.length > 0) {
@@ -357,7 +396,24 @@ exports.handler = async (event) => {
       return jsonResponse(200, missingMessageResponse);
     }
 
-    const deterministicResponse = runDeterministicIngredientMatch(message);
+    const directMatch = tryDirectNameMatch(message);
+    if (directMatch) {
+      const validatedDirectMatch = validateResponse(buildAddItemResponse(directMatch));
+
+      logExecution({
+        intent: 'direct_name_match',
+        toolUsed: 'add_item',
+        validation: validatedDirectMatch.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedDirectMatch.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedDirectMatch.ok ? 'success' : 'error',
+        error: validatedDirectMatch.ok ? null : 'invalid_direct_match'
+      });
+
+      return jsonResponse(200, validatedDirectMatch);
+    }
+
+  const deterministicResponse = runDeterministicIngredientMatch(message);
   if (deterministicResponse) {
     const validatedDeterministic = validateResponse(deterministicResponse);
 
@@ -374,10 +430,10 @@ exports.handler = async (event) => {
       executionTimeMs: Date.now() - startedAt,
       status: validatedDeterministic.ok ? 'success' : 'error',
       error: validatedDeterministic.ok ? null : 'invalid_ingredient_match'
-      });
+    });
 
-      return jsonResponse(200, validatedDeterministic);
-    }
+    return jsonResponse(200, validatedDeterministic);
+  }
 
     if (!process.env.OPENAI_API_KEY) {
       logExecution({
