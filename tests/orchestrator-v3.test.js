@@ -239,19 +239,29 @@ test('falls back gracefully when no valid ingredients are present', async () => 
 });
 
 test('adds menu item directly when name matches and AI is disabled', async () => {
+  const originalApiKey = process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_API_KEY;
-  const { handler } = require('../netlify/functions/orchestrator-v3');
-  const response = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify({ message: 'aggiungi margherita' })
-  });
 
-  assert.equal(response.statusCode, 200);
-  const body = JSON.parse(response.body);
-  assert.equal(body.ok, true);
-  assert.equal(body.cartUpdates[0].id, 'margherita');
-  assert.equal(body.reply, 'Margherita aggiunta al carrello (1x).');
-  assert.ok(!body.reply.includes('Puoi indicarmi il nome esatto della pizza?'));
+  try {
+    const { handler } = require('../netlify/functions/orchestrator-v3');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ message: 'aggiungi margherita' })
+    });
+
+    assert.equal(response.statusCode, 200);
+    const body = JSON.parse(response.body);
+    assert.equal(body.ok, true);
+    assert.equal(body.cartUpdates[0].id, 'margherita');
+    assert.equal(body.reply, 'Margherita aggiunta al carrello (1x).');
+    assert.ok(!body.reply.includes('Puoi indicarmi il nome esatto della pizza?'));
+  } finally {
+    if (originalApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalApiKey;
+    }
+  }
 });
 
 test('keeps direct name matching via AI tools unchanged', async () => {

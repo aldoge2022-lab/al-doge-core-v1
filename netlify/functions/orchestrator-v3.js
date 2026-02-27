@@ -91,17 +91,21 @@ function tryDirectNameMatch(message) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  if (normalized.includes(' con ') || normalized.includes(' senza ')) {
+  const hasCustomizationDirective = normalized.includes(' con ') || normalized.includes(' senza ');
+  if (hasCustomizationDirective) {
     return null;
   }
 
-  const padded = ` ${normalized} `;
+  const paddedForWholeWordMatch = ` ${normalized} `;
 
   for (const item of CATALOG_ITEMS.values()) {
     const id = String(item.id || '').toLowerCase().replace(/\s+/g, ' ').trim();
     const name = String(item.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-    if ((id && padded.includes(` ${id} `)) || (name && padded.includes(` ${name} `))) {
+    if (
+      (id && paddedForWholeWordMatch.includes(` ${id} `)) ||
+      (name && paddedForWholeWordMatch.includes(` ${name} `))
+    ) {
       return item;
     }
   }
