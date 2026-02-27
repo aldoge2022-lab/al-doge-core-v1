@@ -1,5 +1,8 @@
 const OpenAI = require('openai');
 const { validateResponse, FALLBACK_RESPONSE } = require('./orchestrator-v3/contract-validator');
+const { routeDomain } = require('./orchestrator-v3/domain-router');
+const { handleMenu } = require('./orchestrator-v3/menu-handler');
+const { handlePanino } = require('./orchestrator-v3/panino-handler');
 const { logExecution } = require('./orchestrator-v3/logger');
 const {
   AddItemSchema,
@@ -135,6 +138,26 @@ function runDeterministicIngredientMatch(message) {
   }
 
   return buildCustomPizzaFromIngredients({ ingredients, message });
+}
+
+function runDirectMatch(message) {
+  const { domain, intent } = routeDomain(message);
+
+  if (domain === 'MENU') {
+    const directMenuResponse = handleMenu({ message, intent });
+    if (directMenuResponse?.cartUpdates?.length) {
+      return directMenuResponse;
+    }
+  }
+
+  if (domain === 'PANINO') {
+    const directPaninoResponse = handlePanino({ message, intent });
+    if (directPaninoResponse?.cartUpdates?.length) {
+      return directPaninoResponse;
+    }
+  }
+
+  return null;
 }
 
 const TOOL_CONFIG = {
@@ -357,6 +380,28 @@ exports.handler = async (event) => {
       return jsonResponse(200, missingMessageResponse);
     }
 
+    const directResponse = runDirectMatch(message);
+    if (directResponse) {
+      const validatedDirect = validateResponse(directResponse);
+
+      logExecution({
+        intent: 'direct_match',
+        toolUsed:
+          validatedDirect.cartUpdates.length > 0
+            ? validatedDirect.cartUpdates[0]?.type === 'REMOVE_ITEM'
+              ? 'remove_item'
+              : 'add_item'
+            : null,
+        validation: validatedDirect.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedDirect.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedDirect.ok ? 'success' : 'error',
+        error: validatedDirect.ok ? null : 'invalid_direct_match'
+      });
+
+      return jsonResponse(200, validatedDirect);
+    }
+
     const deterministicResponse = runDeterministicIngredientMatch(message);
   if (deterministicResponse) {
     const validatedDeterministic = validateResponse(deterministicResponse);
@@ -379,41 +424,32 @@ exports.handler = async (event) => {
       return jsonResponse(200, validatedDeterministic);
     }
 
+    let fallbackLog = null;
+
     if (!process.env.OPENAI_API_KEY) {
-      logExecution({
+      fallbackLog = {
         intent: 'info',
         toolUsed: null,
         validation: 'skipped',
         finalCartDelta: [],
-        executionTimeMs: Date.now() - startedAt,
         status: 'success',
         error: null
-      });
-      return jsonResponse(200, { ok: true, cartUpdates: [], reply: 'Puoi indicarmi il nome esatto della pizza?' });
-    }
+      };
+    } else {
+      const aiResponse = await runLLM(message);
+      const toolCalls = collectToolCalls(aiResponse?.output);
+      const primaryToolCall = toolCalls[0];
 
-    const aiResponse = await runLLM(message);
-    const toolCalls = collectToolCalls(aiResponse?.output);
-    const primaryToolCall = toolCalls[0];
-
-    if (!primaryToolCall) {
-      const fallback = validateResponse({
-        ok: true,
-        cartUpdates: [],
-        reply: 'Puoi indicarmi il nome esatto della pizza?'
-      });
-
-      logExecution({
-        intent: 'none',
-        toolUsed: null,
-        validation: 'skipped',
-        finalCartDelta: [],
-        executionTimeMs: Date.now() - startedAt,
-        status: 'success'
-      });
-
-      return jsonResponse(200, fallback);
-    }
+      if (!primaryToolCall) {
+        fallbackLog = {
+          intent: 'none',
+          toolUsed: null,
+          validation: 'skipped',
+          finalCartDelta: [],
+          status: 'success',
+          error: null
+        };
+      } else {
 
     const toolConfig = TOOL_CONFIG[primaryToolCall.name];
     if (!toolConfig) {
@@ -461,6 +497,23 @@ exports.handler = async (event) => {
     });
 
     return jsonResponse(200, validatedResponse);
+      }
+    }
+
+    const fallback = validateResponse({
+      ok: true,
+      cartUpdates: [],
+      reply: 'Puoi indicarmi il nome esatto della pizza?'
+    });
+
+    if (fallbackLog) {
+      logExecution({
+        ...fallbackLog,
+        executionTimeMs: Date.now() - startedAt
+      });
+    }
+
+    return jsonResponse(200, fallback);
   } catch (error) {
     const fallback = validateResponse(FALLBACK_RESPONSE);
 

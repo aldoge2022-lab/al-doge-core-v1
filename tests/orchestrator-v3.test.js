@@ -51,7 +51,7 @@ test('returns safe fallback when model does not return tool calls', async () => 
     const { handler } = require('../netlify/functions/orchestrator-v3');
     const response = await handler({
       httpMethod: 'POST',
-      body: JSON.stringify({ message: 'aggiungi una margherita' })
+      body: JSON.stringify({ message: 'ciao' })
     });
 
     assert.equal(response.statusCode, 200);
@@ -99,7 +99,7 @@ test('invalid ingredient returns INVALID_TOOL_PAYLOAD and blocks pollo', async (
     const { handler } = require('../netlify/functions/orchestrator-v3');
     const response = await handler({
       httpMethod: 'POST',
-      body: JSON.stringify({ message: 'aggiungi margherita con pollo' })
+      body: JSON.stringify({ message: 'aggiungi pizza con pollo' })
     });
 
     assert.equal(response.statusCode, 200);
@@ -154,7 +154,7 @@ test('deterministic cart item ignores AI price and computes from catalog', async
     const { handler } = require('../netlify/functions/orchestrator-v3');
     const response = await handler({
       httpMethod: 'POST',
-      body: JSON.stringify({ message: 'aggiungi 2 margherita' })
+      body: JSON.stringify({ message: 'aggiungi due pizze classiche' })
     });
 
     assert.equal(response.statusCode, 200);
