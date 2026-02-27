@@ -70,6 +70,10 @@ function buildAddItemResponse(orderItem) {
 }
 
 function tryDirectNameMatch(message) {
+  if (!message) {
+    return null;
+  }
+
   const normalized = String(message || '').toLowerCase();
   if (SKIP_DIRECT_MATCH_REGEX.test(normalized)) {
     return null;
