@@ -13,6 +13,7 @@ const {
 const { buildOrderItem, CATALOG_ITEMS } = require('./orchestrator-v3/services/orderBuilder');
 const { extractValidIngredients } = require('./orchestrator-v3/services/ingredientExtractor');
 const { findBestMatches } = require('./orchestrator-v3/services/ingredientMatchEngine');
+const { findPizza, parseQty } = require('./orchestrator-v3/menu-handler');
 
 const JSON_HEADERS = {
   'Content-Type': 'application/json',
@@ -55,6 +56,40 @@ function parseArgs(args) {
     }
   }
   return args;
+}
+
+function buildAddItemResponse(orderItem) {
+  return {
+    ok: true,
+    cartUpdates: [orderItem],
+    reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
+  };
+}
+
+function tryDirectNameMatch(message) {
+  const normalized = String(message || '').toLowerCase();
+  if (/\b(con|senza)\b/.test(normalized)) {
+    return null;
+  }
+
+  const pizza = findPizza(message);
+  if (!pizza) {
+    return null;
+  }
+
+  const quantity = parseQty(message);
+
+  try {
+    const orderItem = buildOrderItem({
+      baseItem: pizza,
+      extraIngredients: [],
+      removedIngredients: [],
+      quantity
+    });
+    return orderItem;
+  } catch {
+    return null;
+  }
 }
 
 function buildCustomPizzaFromIngredients({ ingredients, message }) {
@@ -110,20 +145,16 @@ function runDeterministicIngredientMatch(message) {
 
   const matches = findBestMatches(ingredients, Array.from(CATALOG_ITEMS.values()));
 
-  if (matches.identical) {
-    const orderItem = buildOrderItem({
-      baseItem: matches.identical,
-      extraIngredients: [],
-      removedIngredients: [],
-      quantity: 1
-    });
+    if (matches.identical) {
+      const orderItem = buildOrderItem({
+        baseItem: matches.identical,
+        extraIngredients: [],
+        removedIngredients: [],
+        quantity: 1
+      });
 
-    return {
-      ok: true,
-      cartUpdates: [orderItem],
-      reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
-    };
-  }
+      return buildAddItemResponse(orderItem);
+    }
 
   if (Array.isArray(matches.similar) && matches.similar.length > 0) {
     return {
@@ -357,9 +388,26 @@ exports.handler = async (event) => {
       return jsonResponse(200, missingMessageResponse);
     }
 
+    const directMatch = tryDirectNameMatch(message);
+    if (directMatch) {
+      const validatedDirectMatch = validateResponse(buildAddItemResponse(directMatch));
+
+      logExecution({
+        intent: 'direct_name_match',
+        toolUsed: 'add_item',
+        validation: validatedDirectMatch.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedDirectMatch.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedDirectMatch.ok ? 'success' : 'error',
+        error: validatedDirectMatch.ok ? null : 'invalid_direct_match'
+      });
+
+      return jsonResponse(200, validatedDirectMatch);
+    }
+
     const deterministicResponse = runDeterministicIngredientMatch(message);
-  if (deterministicResponse) {
-    const validatedDeterministic = validateResponse(deterministicResponse);
+    if (deterministicResponse) {
+      const validatedDeterministic = validateResponse(deterministicResponse);
 
     logExecution({
       intent: 'deterministic_ingredients',
