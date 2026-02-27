@@ -51,7 +51,7 @@ test('returns safe fallback when model does not return tool calls', async () => 
     const { handler } = require('../netlify/functions/orchestrator-v3');
     const response = await handler({
       httpMethod: 'POST',
-      body: JSON.stringify({ message: 'ciao vorrei ordinare' })
+      body: JSON.stringify({ message: 'puoi aiutarmi a scegliere?' })
     });
 
     assert.equal(response.statusCode, 200);
@@ -154,7 +154,7 @@ test('deterministic cart item ignores AI price and computes from catalog', async
     const { handler } = require('../netlify/functions/orchestrator-v3');
     const response = await handler({
       httpMethod: 'POST',
-      body: JSON.stringify({ message: 'vorrei ordinare qualcosa' })
+      body: JSON.stringify({ message: 'puoi aggiungere qualcosa al carrello?' })
     });
 
     assert.equal(response.statusCode, 200);
