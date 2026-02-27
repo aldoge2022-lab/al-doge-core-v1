@@ -15,7 +15,7 @@ const { extractValidIngredients } = require('./orchestrator-v3/services/ingredie
 const { findBestMatches } = require('./orchestrator-v3/services/ingredientMatchEngine');
 const { findPizza, parseQty } = require('./orchestrator-v3/menu-handler');
 
-// Skip direct-name matching when the message describes ingredient modifications (Italian: "con"/"senza").
+// Skip direct-name matching when the message uses Italian prepositions for ingredient tweaks ("con"/"senza").
 const INGREDIENT_MODIFICATION_REGEX = /\b(con|senza)\b/;
 
 const JSON_HEADERS = {
@@ -75,12 +75,12 @@ function tryDirectNameMatch(message) {
     return null;
   }
 
-  const pizza = findPizza(message);
+  const pizza = findPizza(normalized);
   if (!pizza) {
     return null;
   }
 
-  const quantity = parseQty(message);
+  const quantity = parseQty(normalized);
 
   try {
     const orderItem = buildOrderItem({
