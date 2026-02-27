@@ -49,17 +49,30 @@ function validateResponse(rawResponse) {
         .filter(Boolean)
     : [];
 
+  const normalizedSuggestions = Array.isArray(rawResponse.suggestions)
+    ? rawResponse.suggestions
+        .map((suggestion) => String(suggestion || '').trim())
+        .filter(Boolean)
+    : [];
+
   const cartUpdatesAreValid = normalizedCartUpdates.every(isValidCartUpdate);
 
   if (!normalizedReply || hasNullCartUpdatesOnSuccess || !cartUpdatesAreValid) {
     return { ...FALLBACK_RESPONSE };
   }
 
-  return {
+  const validated = {
     ok,
     cartUpdates: normalizedCartUpdates,
-    reply: normalizedReply
+    reply: normalizedReply,
+    suggestions: normalizedSuggestions
   };
+
+  if (validated.suggestions && validated.suggestions.length === 0) {
+    delete validated.suggestions;
+  }
+
+  return validated;
 }
 
 module.exports = {

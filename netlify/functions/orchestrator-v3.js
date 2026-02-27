@@ -7,9 +7,12 @@ const {
   CreateCustomItemSchema,
   SuggestItemsSchema,
   parseWith,
-  toToolParameters
+  toToolParameters,
+  normalizeIngredientId
 } = require('./orchestrator-v3/schemas/orderSchemas');
 const { buildOrderItem, CATALOG_ITEMS } = require('./orchestrator-v3/services/orderBuilder');
+const { extractValidIngredients } = require('./orchestrator-v3/services/ingredientExtractor');
+const { findBestMatches } = require('./orchestrator-v3/services/ingredientMatchEngine');
 
 const JSON_HEADERS = {
   'Content-Type': 'application/json',
@@ -52,6 +55,86 @@ function parseArgs(args) {
     }
   }
   return args;
+}
+
+function buildCustomPizzaFromIngredients({ ingredients, message }) {
+  const baseItem = CATALOG_ITEMS.get('margherita') || Array.from(CATALOG_ITEMS.values())[0];
+  if (!baseItem) {
+    return null;
+  }
+
+  const normalizedMessage = String(message || '').toLowerCase();
+  const includeTomatoBase = !normalizedMessage.includes('bianca');
+  const desiredIngredients = new Set(
+    (ingredients || []).map((ingredient) => normalizeIngredientId(ingredient)).filter(Boolean)
+  );
+
+  if (includeTomatoBase) {
+    desiredIngredients.add('pomodoro');
+  } else {
+    desiredIngredients.delete('pomodoro');
+  }
+
+  const baseIngredients = [
+    ...(Array.isArray(baseItem.ingredients) ? baseItem.ingredients : []),
+    ...(Array.isArray(baseItem.ingredienti) ? baseItem.ingredienti : [])
+  ]
+    .map(normalizeIngredientId)
+    .filter(Boolean);
+
+  const removedIngredients = baseIngredients.filter((ingredient) => !desiredIngredients.has(ingredient));
+  const extraIngredients = Array.from(desiredIngredients).filter(
+    (ingredient) => !baseIngredients.includes(ingredient)
+  );
+
+  const orderItem = buildOrderItem({
+    baseItem,
+    extraIngredients,
+    removedIngredients,
+    quantity: 1
+  });
+
+  const ingredientList = orderItem.ingredients.join(', ');
+  return {
+    ok: true,
+    cartUpdates: [orderItem],
+    reply: `Ho creato una pizza personalizzata con ${ingredientList}.`
+  };
+}
+
+function runDeterministicIngredientMatch(message) {
+  const ingredients = extractValidIngredients(message);
+  if (ingredients.length === 0) {
+    return null;
+  }
+
+  const matches = findBestMatches(ingredients, Array.from(CATALOG_ITEMS.values()));
+
+  if (matches.identical) {
+    const orderItem = buildOrderItem({
+      baseItem: matches.identical,
+      extraIngredients: [],
+      removedIngredients: [],
+      quantity: 1
+    });
+
+    return {
+      ok: true,
+      cartUpdates: [orderItem],
+      reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
+    };
+  }
+
+  if (Array.isArray(matches.similar) && matches.similar.length > 0) {
+    return {
+      ok: true,
+      cartUpdates: [],
+      reply: 'Non esiste esattamente questa combinazione. Ti propongo:',
+      suggestions: matches.similar.map((pizza) => pizza.name || pizza.id).filter(Boolean)
+    };
+  }
+
+  return buildCustomPizzaFromIngredients({ ingredients, message });
 }
 
 const TOOL_CONFIG = {
@@ -272,6 +355,28 @@ exports.handler = async (event) => {
       });
 
       return jsonResponse(200, missingMessageResponse);
+    }
+
+    const deterministicResponse = runDeterministicIngredientMatch(message);
+  if (deterministicResponse) {
+    const validatedDeterministic = validateResponse(deterministicResponse);
+
+    logExecution({
+      intent: 'deterministic_ingredients',
+      toolUsed:
+        validatedDeterministic.cartUpdates.length > 0
+          ? validatedDeterministic.cartUpdates[0]?.type === 'REMOVE_ITEM'
+            ? 'remove_item'
+            : 'add_item'
+          : null,
+      validation: validatedDeterministic.ok ? 'valid' : 'invalid',
+      finalCartDelta: validatedDeterministic.cartUpdates,
+      executionTimeMs: Date.now() - startedAt,
+      status: validatedDeterministic.ok ? 'success' : 'error',
+      error: validatedDeterministic.ok ? null : 'invalid_ingredient_match'
+      });
+
+      return jsonResponse(200, validatedDeterministic);
     }
 
     if (!process.env.OPENAI_API_KEY) {

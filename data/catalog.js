@@ -46,12 +46,28 @@ let catalog = {
       tags: ['piccante']
     },
     {
+      id: 'quattro-stagioni',
+      name: '4 Stagioni',
+      price: 850,
+      type: 'pizza',
+      ingredients: ['pomodoro', 'mozzarella', 'prosciutto', 'funghi'],
+      tags: ['classica']
+    },
+    {
       id: 'quattro-formaggi',
       name: 'Quattro Formaggi',
       price: 800,
       type: 'pizza',
       ingredients: ['mozzarella', 'gorgonzola', 'parmigiano', 'provola'],
       tags: ['formaggi']
+    },
+    {
+      id: 'margherita-rucola',
+      name: 'Margherita Rucola',
+      price: 750,
+      type: 'pizza',
+      ingredients: ['pomodoro', 'mozzarella', 'rucola'],
+      tags: ['vegetariana']
     },
     {
       id: 'bufala',
