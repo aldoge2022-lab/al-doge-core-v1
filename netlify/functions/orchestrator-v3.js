@@ -145,14 +145,14 @@ function runDirectMatch(message) {
 
   if (domain === 'MENU') {
     const directMenuResponse = handleMenu({ message, intent });
-    if (directMenuResponse?.cartUpdates?.length) {
+    if (directMenuResponse?.ok && directMenuResponse.cartUpdates?.length) {
       return directMenuResponse;
     }
   }
 
   if (domain === 'PANINO') {
     const directPaninoResponse = handlePanino({ message, intent });
-    if (directPaninoResponse?.cartUpdates?.length) {
+    if (directPaninoResponse?.ok && directPaninoResponse.cartUpdates?.length) {
       return directPaninoResponse;
     }
   }
