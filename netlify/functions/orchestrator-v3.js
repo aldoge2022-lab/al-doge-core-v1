@@ -15,7 +15,7 @@ const { extractValidIngredients } = require('./orchestrator-v3/services/ingredie
 const { findBestMatches } = require('./orchestrator-v3/services/ingredientMatchEngine');
 const { findPizza, parseQty } = require('./orchestrator-v3/menu-handler');
 
-// Skip direct-name matching when the message contains Italian prepositions indicating ingredient additions ("con") or removals ("senza"); this list is intentionally limited.
+// Skip direct-name matching when the message contains Italian prepositions indicating ingredient additions ("con") or removals ("senza"); this intentionally limited set avoids masking ingredient lists.
 const SKIP_DIRECT_MATCH_REGEX = /\b(con|senza)\b/;
 
 const JSON_HEADERS = {
@@ -412,9 +412,9 @@ exports.handler = async (event) => {
       return jsonResponse(200, validatedDirectMatch);
     }
 
-    const deterministicResponse = runDeterministicIngredientMatch(message);
-    if (deterministicResponse) {
-      const validatedDeterministic = validateResponse(deterministicResponse);
+  const deterministicResponse = runDeterministicIngredientMatch(message);
+  if (deterministicResponse) {
+    const validatedDeterministic = validateResponse(deterministicResponse);
 
     logExecution({
       intent: 'deterministic_ingredients',
@@ -429,10 +429,10 @@ exports.handler = async (event) => {
       executionTimeMs: Date.now() - startedAt,
       status: validatedDeterministic.ok ? 'success' : 'error',
       error: validatedDeterministic.ok ? null : 'invalid_ingredient_match'
-      });
+    });
 
-      return jsonResponse(200, validatedDeterministic);
-    }
+    return jsonResponse(200, validatedDeterministic);
+  }
 
     if (!process.env.OPENAI_API_KEY) {
       logExecution({
