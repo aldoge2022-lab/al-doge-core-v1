@@ -8,6 +8,8 @@ function normalizeText(value) {
     .trim();
 }
 
+const TOKEN_SPLIT_REGEX = /\s+/;
+
 function extractValidIngredients(text) {
   const normalizedText = normalizeText(text);
   if (!normalizedText) {
@@ -15,6 +17,7 @@ function extractValidIngredients(text) {
   }
 
   const found = new Set();
+  const textTokens = new Set(normalizedText.split(TOKEN_SPLIT_REGEX).filter(Boolean));
 
   VALID_INGREDIENTS.forEach((ingredient) => {
     const normalizedIngredient = normalizeIngredientId(ingredient);
@@ -22,9 +25,10 @@ function extractValidIngredients(text) {
       return;
     }
 
-    const escaped = normalizedIngredient.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
-    if (pattern.test(normalizedText)) {
+    const ingredientTokens = normalizedIngredient.split(TOKEN_SPLIT_REGEX);
+
+    const allTokensPresent = ingredientTokens.every((token) => textTokens.has(token));
+    if (allTokensPresent) {
       found.add(normalizedIngredient);
     }
   });
