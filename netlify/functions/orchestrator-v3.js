@@ -1,8 +1,15 @@
+const OpenAI = require('openai');
 const { validateResponse, FALLBACK_RESPONSE } = require('./orchestrator-v3/contract-validator');
-const { routeDomain } = require('./orchestrator-v3/domain-router');
-const { handlePanino, extractIngredients } = require('./orchestrator-v3/panino-handler');
-const { handleMenu } = require('./orchestrator-v3/menu-handler');
 const { logExecution } = require('./orchestrator-v3/logger');
+const {
+  AddItemSchema,
+  RemoveItemSchema,
+  CreateCustomItemSchema,
+  SuggestItemsSchema,
+  parseWith,
+  toToolParameters
+} = require('./orchestrator-v3/schemas/orderSchemas');
+const { buildOrderItem, CATALOG_ITEMS } = require('./orchestrator-v3/services/orderBuilder');
 
 const JSON_HEADERS = {
   'Content-Type': 'application/json',
@@ -35,6 +42,166 @@ function parseBody(body) {
   }
 }
 
+function parseArgs(args) {
+  if (!args) return {};
+  if (typeof args === 'string') {
+    try {
+      return JSON.parse(args);
+    } catch {
+      return {};
+    }
+  }
+  return args;
+}
+
+const TOOL_CONFIG = {
+  add_item: {
+    schema: AddItemSchema,
+    parameters: toToolParameters('add'),
+    executor: (data) => {
+      const baseItem = CATALOG_ITEMS.get(String(data.itemId));
+      if (!baseItem) {
+        return { ok: false, error: 'INVALID_TOOL_PAYLOAD' };
+      }
+
+      let orderItem;
+      try {
+        orderItem = buildOrderItem({
+          baseItem,
+          extraIngredients: data.extraIngredients || [],
+          removedIngredients: data.removedIngredients || [],
+          quantity: data.quantity
+        });
+      } catch {
+        return { ok: false, error: 'INVALID_TOOL_PAYLOAD' };
+      }
+
+      return {
+        ok: true,
+        cartUpdates: [orderItem],
+        reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
+      };
+    }
+  },
+  remove_item: {
+    schema: RemoveItemSchema,
+    parameters: toToolParameters('remove'),
+    executor: (data) => {
+      if (!CATALOG_ITEMS.has(String(data.itemId))) {
+        return { ok: false, error: 'INVALID_TOOL_PAYLOAD' };
+      }
+
+      return {
+        ok: true,
+        cartUpdates: [
+          {
+            type: 'REMOVE_ITEM',
+            id: String(data.itemId),
+            qty: data.quantity
+          }
+        ],
+        reply: `Rimosso ${data.quantity}x ${data.itemId} dal carrello.`
+      };
+    }
+  },
+  create_custom_item: {
+    schema: CreateCustomItemSchema,
+    parameters: toToolParameters('custom'),
+    executor: (data) => {
+      const baseItem = CATALOG_ITEMS.get(String(data.baseItemId));
+      if (!baseItem) {
+        return { ok: false, error: 'INVALID_TOOL_PAYLOAD' };
+      }
+
+      let orderItem;
+      try {
+        orderItem = buildOrderItem({
+          baseItem,
+          extraIngredients: data.extraIngredients || [],
+          removedIngredients: data.removedIngredients || [],
+          quantity: data.quantity
+        });
+      } catch {
+        return { ok: false, error: 'INVALID_TOOL_PAYLOAD' };
+      }
+
+      return {
+        ok: true,
+        cartUpdates: [orderItem],
+        reply: `Creato articolo personalizzato (${orderItem.qty}x ${orderItem.name}).`
+      };
+    }
+  },
+  suggest_items: {
+    schema: SuggestItemsSchema,
+    parameters: toToolParameters('suggest'),
+    executor: (data) => {
+      const items = Array.from(CATALOG_ITEMS.values()).slice(0, data.limit || 3);
+      const reply =
+        items.length === 0
+          ? 'Catalogo non disponibile.'
+          : `Posso proporre: ${items.map((item) => item.name).join(', ')}.`;
+
+      return {
+        ok: true,
+        cartUpdates: [],
+        reply
+      };
+    }
+  }
+};
+
+const TOOL_DEFINITIONS = Object.entries(TOOL_CONFIG).map(([name, config]) => ({
+  type: 'function',
+  name,
+  description: 'Usa il tool per modificare il carrello in modo strutturato.',
+  parameters: config.parameters
+}));
+
+function collectToolCalls(outputs) {
+  if (!Array.isArray(outputs)) return [];
+  const toolCalls = [];
+
+  outputs.forEach((output) => {
+    if (output?.type === 'tool_call') {
+      toolCalls.push(output);
+      return;
+    }
+
+    if (output?.type === 'message' && Array.isArray(output.content)) {
+      output.content.forEach((part) => {
+        if (part?.type === 'tool_call') {
+          toolCalls.push(part);
+        }
+      });
+    }
+  });
+
+  return toolCalls;
+}
+
+async function runLLM(prompt) {
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return client.responses.create({
+    model: 'gpt-4o-mini-2024-07-18',
+    input: [
+      {
+        role: 'system',
+        content:
+          'Sei un orchestratore ordini. Rispondi SOLO usando tool_call obbligatorio. Non restituire mai testo libero. Non generare prezzi.'
+      },
+      { role: 'user', content: prompt }
+    ],
+    tools: TOOL_DEFINITIONS,
+    tool_choice: 'auto'
+  });
+}
+
+function isHealthRequest(event) {
+  const path = String(event.path || event.rawUrl || '').toLowerCase();
+  return path.includes('orchestrator-v3/health');
+}
+
 exports.handler = async (event) => {
   const startedAt = Date.now();
 
@@ -44,6 +211,14 @@ exports.handler = async (event) => {
       headers: JSON_HEADERS,
       body: ''
     };
+  }
+
+  if (isHealthRequest(event) && event.httpMethod === 'GET') {
+    return jsonResponse(200, {
+      status: 'ok',
+      catalogLoaded: CATALOG_ITEMS.size > 0,
+      schemaLoaded: true
+    });
   }
 
   if (event.httpMethod !== 'POST') {
@@ -66,9 +241,10 @@ exports.handler = async (event) => {
       });
 
       logExecution({
-        domain: 'MENU',
-        intent: 'info',
-        ingredientsDetected: [],
+        intent: 'invalid_body',
+        toolUsed: null,
+        validation: 'invalid',
+        finalCartDelta: [],
         executionTimeMs: Date.now() - startedAt,
         status: 'error',
         error: 'invalid_body'
@@ -85,20 +261,95 @@ exports.handler = async (event) => {
         reply: 'Messaggio mancante.'
       });
 
+      logExecution({
+        intent: 'missing_message',
+        toolUsed: null,
+        validation: 'invalid',
+        finalCartDelta: [],
+        executionTimeMs: Date.now() - startedAt,
+        status: 'error',
+        error: 'missing_message'
+      });
+
       return jsonResponse(200, missingMessageResponse);
     }
 
-    const routing = routeDomain(message);
-    const response = routing.domain === 'PANINO'
-      ? handlePanino({ message, intent: routing.intent })
-      : handleMenu({ message, intent: routing.intent });
+    if (!process.env.OPENAI_API_KEY) {
+      logExecution({
+        intent: 'info',
+        toolUsed: null,
+        validation: 'skipped',
+        finalCartDelta: [],
+        executionTimeMs: Date.now() - startedAt,
+        status: 'success',
+        error: null
+      });
+      return jsonResponse(200, { ok: true, cartUpdates: [], reply: 'Puoi indicarmi il nome esatto della pizza?' });
+    }
 
-    const validatedResponse = validateResponse(response);
+    const aiResponse = await runLLM(message);
+    const toolCalls = collectToolCalls(aiResponse?.output);
+    const primaryToolCall = toolCalls[0];
+
+    if (!primaryToolCall) {
+      const fallback = validateResponse({
+        ok: true,
+        cartUpdates: [],
+        reply: 'Puoi indicarmi il nome esatto della pizza?'
+      });
+
+      logExecution({
+        intent: 'none',
+        toolUsed: null,
+        validation: 'skipped',
+        finalCartDelta: [],
+        executionTimeMs: Date.now() - startedAt,
+        status: 'success'
+      });
+
+      return jsonResponse(200, fallback);
+    }
+
+    const toolConfig = TOOL_CONFIG[primaryToolCall.name];
+    if (!toolConfig) {
+      return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
+    }
+
+    const parsed = parseWith(toolConfig.schema, parseArgs(primaryToolCall.arguments));
+    if (!parsed.ok) {
+      logExecution({
+        intent: primaryToolCall.name,
+        toolUsed: primaryToolCall.name,
+        validation: 'invalid',
+        finalCartDelta: [],
+        executionTimeMs: Date.now() - startedAt,
+        status: 'error',
+        error: 'INVALID_TOOL_PAYLOAD'
+      });
+      return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
+    }
+
+    const execution = toolConfig.executor(parsed.data);
+    if (execution.ok === false && execution.error) {
+      logExecution({
+        intent: primaryToolCall.name,
+        toolUsed: primaryToolCall.name,
+        validation: 'invalid',
+        finalCartDelta: [],
+        executionTimeMs: Date.now() - startedAt,
+        status: 'error',
+        error: execution.error
+      });
+      return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
+    }
+
+    const validatedResponse = validateResponse(execution);
 
     logExecution({
-      domain: routing.domain,
-      intent: routing.intent,
-      ingredientsDetected: routing.domain === 'PANINO' ? extractIngredients(message) : [],
+      intent: primaryToolCall.name,
+      toolUsed: primaryToolCall.name,
+      validation: validatedResponse.ok ? 'valid' : 'invalid',
+      finalCartDelta: validatedResponse.cartUpdates,
       executionTimeMs: Date.now() - startedAt,
       status: validatedResponse.ok ? 'success' : 'error',
       error: validatedResponse.ok ? null : validatedResponse.reply
@@ -109,9 +360,10 @@ exports.handler = async (event) => {
     const fallback = validateResponse(FALLBACK_RESPONSE);
 
     logExecution({
-      domain: 'MENU',
-      intent: 'info',
-      ingredientsDetected: [],
+      intent: 'unknown',
+      toolUsed: null,
+      validation: 'error',
+      finalCartDelta: [],
       executionTimeMs: Date.now() - startedAt,
       status: 'error',
       error: error && error.message ? error.message : 'unknown_error'

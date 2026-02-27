@@ -1,67 +1,176 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { handler } = require('../netlify/functions/orchestrator-v3');
-const { validateResponse } = require('../netlify/functions/orchestrator-v3/contract-validator');
-const { parseQty: parseMenuQty } = require('../netlify/functions/orchestrator-v3/menu-handler');
+const orchestratorPath = require.resolve('../netlify/functions/orchestrator-v3');
+const openaiModulePath = require.resolve('openai');
 
-async function call(message) {
-  const response = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify({ message })
-  });
-
-  return {
-    statusCode: response.statusCode,
-    body: JSON.parse(response.body)
-  };
+function clearModules() {
+  delete require.cache[orchestratorPath];
+  delete require.cache[openaiModulePath];
 }
 
-test('dominio PANINO: add panino returns deterministic cart item', async () => {
-  const result = await call('Aggiungi panino con mozzarella e pomodoro');
-  assert.equal(result.statusCode, 200);
-  assert.equal(result.body.ok, true);
-  assert.equal(result.body.cartUpdates.length, 1);
-  assert.equal(result.body.cartUpdates[0].type, 'PANINO');
-  assert.deepEqual(result.body.cartUpdates[0].ingredients.sort(), ['mozzarella', 'pomodoro']);
+test.beforeEach(() => {
+  clearModules();
 });
 
-test('dominio MENU: add margherita returns MENU_ITEM', async () => {
-  const result = await call('Inserisci 2 margherita');
-  assert.equal(result.statusCode, 200);
-  assert.equal(result.body.ok, true);
-  assert.equal(result.body.cartUpdates[0].type, 'MENU_ITEM');
-  assert.equal(result.body.cartUpdates[0].id, 'margherita');
-  assert.equal(result.body.cartUpdates[0].qty, 2);
+test('health endpoint reports catalog and schema loaded', async () => {
+  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const response = await handler({
+    httpMethod: 'GET',
+    path: '/.netlify/functions/orchestrator-v3/health'
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.equal(body.status, 'ok');
+  assert.equal(body.catalogLoaded, true);
+  assert.equal(body.schemaLoaded, true);
 });
 
-test('contract validator returns fallback for invalid reply', () => {
-  const validated = validateResponse({ ok: true, cartUpdates: [], reply: '   ' });
-  assert.equal(validated.ok, false);
-  assert.deepEqual(validated.cartUpdates, []);
-  assert.equal(validated.reply, 'Errore interno sistema ordine.');
+test('returns safe fallback when model does not return tool calls', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async () => ({
+            id: 'resp_no_tool',
+            output: [{ type: 'message', content: [{ type: 'output_text', text: 'ciao' }] }]
+          })
+        };
+      }
+    }
+  };
+
+  try {
+    const { handler } = require('../netlify/functions/orchestrator-v3');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ message: 'aggiungi una margherita' })
+    });
+
+    assert.equal(response.statusCode, 200);
+    const body = JSON.parse(response.body);
+    assert.equal(body.ok, true);
+    assert.equal(body.reply, 'Puoi indicarmi il nome esatto della pizza?');
+    assert.deepEqual(body.cartUpdates, []);
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
 });
 
-test('ingredient overflow returns structured error', async () => {
-  process.env.PANINO_MAX_INGREDIENTS = '2';
-  const result = await call('Aggiungi panino con pomodoro mozzarella burrata');
-  delete process.env.PANINO_MAX_INGREDIENTS;
+test('invalid ingredient returns INVALID_TOOL_PAYLOAD and blocks pollo', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
 
-  assert.equal(result.statusCode, 200);
-  assert.equal(result.body.ok, false);
-  assert.deepEqual(result.body.cartUpdates, []);
-  assert.match(result.body.reply, /massimo di 2 ingredienti/i);
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async () => ({
+            id: 'resp_invalid',
+            output: [
+              {
+                type: 'tool_call',
+                name: 'add_item',
+                call_id: 'call_invalid',
+                arguments: JSON.stringify({ itemId: 'margherita', extraIngredients: ['pollo'] })
+              }
+            ]
+          })
+        };
+      }
+    }
+  };
+
+  try {
+    const { handler } = require('../netlify/functions/orchestrator-v3');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ message: 'aggiungi margherita con pollo' })
+    });
+
+    assert.equal(response.statusCode, 200);
+    const body = JSON.parse(response.body);
+    assert.equal(body.ok, false);
+    assert.equal(body.error, 'INVALID_TOOL_PAYLOAD');
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
 });
 
-test('pizza non trovata returns clear message and valid contract', async () => {
-  const result = await call('Aggiungi pizza inesistente');
-  assert.equal(result.statusCode, 200);
-  assert.equal(result.body.ok, false);
-  assert.deepEqual(result.body.cartUpdates, []);
-  assert.match(result.body.reply, /Pizza non trovata/i);
-});
+test('deterministic cart item ignores AI price and computes from catalog', async () => {
+  const originalOpenAIModule = require.cache[openaiModulePath];
+  process.env.OPENAI_API_KEY = 'test-key';
+  const requests = [];
 
-test('qty parsing supports italian word quantities', () => {
-  assert.equal(parseMenuQty('aggiungi due margherita'), 2);
-  assert.equal(parseMenuQty('metti 3 diavola'), 3);
+  require.cache[openaiModulePath] = {
+    id: openaiModulePath,
+    filename: openaiModulePath,
+    loaded: true,
+    exports: class OpenAI {
+      constructor() {
+        this.responses = {
+          create: async (request) => {
+            requests.push(request);
+            return {
+              id: 'resp_add',
+              output: [
+                {
+                  type: 'tool_call',
+                  name: 'add_item',
+                  call_id: 'call_add',
+                  arguments: JSON.stringify({
+                    itemId: 'margherita',
+                    quantity: '2',
+                    extraIngredients: ['mozzarella']
+                  })
+                }
+              ]
+            };
+          }
+        };
+      }
+    }
+  };
+
+  try {
+    const { handler } = require('../netlify/functions/orchestrator-v3');
+    const response = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ message: 'aggiungi 2 margherita' })
+    });
+
+    assert.equal(response.statusCode, 200);
+    const body = JSON.parse(response.body);
+    assert.equal(body.ok, true);
+    assert.equal(body.cartUpdates[0].id, 'margherita');
+    assert.equal(body.cartUpdates[0].qty, 2);
+    assert.ok(body.cartUpdates[0].price >= 600);
+    assert.ok(Object.prototype.hasOwnProperty.call(body.cartUpdates[0], 'price'));
+    assert.ok(body.cartUpdates[0].ingredients.includes('mozzarella'));
+    assert.equal(requests[0].tools[0].parameters.additionalProperties, false);
+  } finally {
+    if (originalOpenAIModule) {
+      require.cache[openaiModulePath] = originalOpenAIModule;
+    } else {
+      delete require.cache[openaiModulePath];
+    }
+  }
 });
