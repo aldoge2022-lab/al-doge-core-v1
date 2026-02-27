@@ -16,7 +16,7 @@ const { findBestMatches } = require('./orchestrator-v3/services/ingredientMatchE
 const { findPizza, parseQty } = require('./orchestrator-v3/menu-handler');
 
 // Skip direct-name matching when the message uses Italian prepositions for ingredient tweaks ("con"/"senza").
-const INGREDIENT_MODIFICATION_REGEX = /\b(con|senza)\b/;
+const SKIP_DIRECT_MATCH_REGEX = /\b(con|senza)\b/;
 
 const JSON_HEADERS = {
   'Content-Type': 'application/json',
@@ -71,7 +71,7 @@ function buildAddItemResponse(orderItem) {
 
 function tryDirectNameMatch(message) {
   const normalized = String(message || '').toLowerCase();
-  if (INGREDIENT_MODIFICATION_REGEX.test(normalized)) {
+  if (SKIP_DIRECT_MATCH_REGEX.test(normalized)) {
     return null;
   }
 
@@ -148,16 +148,16 @@ function runDeterministicIngredientMatch(message) {
 
   const matches = findBestMatches(ingredients, Array.from(CATALOG_ITEMS.values()));
 
-    if (matches.identical) {
-      const orderItem = buildOrderItem({
-        baseItem: matches.identical,
-        extraIngredients: [],
-        removedIngredients: [],
-        quantity: 1
-      });
+  if (matches.identical) {
+    const orderItem = buildOrderItem({
+      baseItem: matches.identical,
+      extraIngredients: [],
+      removedIngredients: [],
+      quantity: 1
+    });
 
-      return buildAddItemResponse(orderItem);
-    }
+    return buildAddItemResponse(orderItem);
+  }
 
   if (Array.isArray(matches.similar) && matches.similar.length > 0) {
     return {
