@@ -36,12 +36,16 @@ exports.handler = async () => {
     };
   }
 
-  cachedMenu = data;
+  cachedMenu = {
+    pizze: data || [],
+    panini: [],
+    bevande: []
+  };
   cacheTimestamp = now;
 
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
+    body: JSON.stringify(cachedMenu)
   };
 };
