@@ -29,10 +29,19 @@ export const handler = async (event) => {
     }
 
     // 1️⃣ Recupera menu dal database
-    const { data: pizzas, error } = await supabase
-      .from("menu_items")
-      .select("id, Nome, Prezzo, ingredienti")
-      .eq("disponibile", true);
+const { data: pizzas, error } = await supabase
+  .from("menu_items")
+  .select("*");
+
+if (error) {
+  return {
+    statusCode: 500,
+    body: JSON.stringify({
+      error: error.message,
+      details: error
+    })
+  };
+}
 
     if (error || !pizzas) {
       return {
