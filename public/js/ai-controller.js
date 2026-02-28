@@ -11,21 +11,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   btn.addEventListener("click", async () => {
 
-    const prompt = input.value.trim();
-    if (!prompt) return;
-
-    // Reset solo al nuovo invio
-    resultBox.textContent = "";
+    const message = input.value.trim();
+    if (!message) return;
 
     resultBox.textContent = "Sto pensando...";
 
     try {
-      const response = await fetch("/.netlify/functions/orchestrator-v3", {
+
+      const response = await fetch("/.netlify/functions/ai-engine", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ message })
       });
 
       if (!response.ok) {
@@ -33,38 +31,17 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const data = await response.json();
-      let replyText = null;
-      if (typeof data?.reply === "string") {
-        replyText = data.reply;
-      } else if (typeof data?.response === "string") {
-        replyText = data.response;
-      }
 
-      if (!data || !replyText) {
+      if (!data || !data.reply) {
         resultBox.textContent = "Errore durante la richiesta AI.";
         return;
       }
 
-      resultBox.textContent = replyText;
+      resultBox.textContent = data.reply;
 
-      if (data.ok === false) {
-        return;
-      }
-
-      if (data.action === "add_to_cart") {
-        if (typeof window.addToCart === "function" && data.mainItem) {
-          window.addToCart(data.mainItem);
-        } else {
-          console.warn("Impossibile aggiungere al carrello", { hasHandler: typeof window.addToCart === "function", mainItem: data.mainItem });
-        }
-      }
-
-      if (data.upsell) {
-        try {
-          sessionStorage.setItem("aldoge_ai_conversation", JSON.stringify({ reply: replyText, upsell: data.upsell }));
-        } catch (storageError) {
-          console.warn("Impossibile salvare lo stato conversazione", storageError);
-        }
+      // Se l'AI restituisce un item valido → auto add
+      if (data.ok && data.item && typeof window.addToCart === "function") {
+        window.addToCart(data.item);
       }
 
     } catch (err) {
