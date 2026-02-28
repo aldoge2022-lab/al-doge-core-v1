@@ -29,7 +29,7 @@ export const handler = async (event) => {
     }
 
     // 1️⃣ Recupera menu dal database
-const { data: pizzas, error } = await supabase
+const { data: pizze, error } = await supabase
   .from("menu_items")
   .select("*");
 
