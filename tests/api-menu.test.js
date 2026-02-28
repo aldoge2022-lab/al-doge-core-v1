@@ -55,7 +55,11 @@ test('api-menu caches successful responses', async () => {
 
   const first = await handler();
   assert.equal(first.statusCode, 200);
-  assert.deepEqual(JSON.parse(first.body), state.rows);
+  assert.deepEqual(JSON.parse(first.body), {
+    pizze: state.rows,
+    panini: [],
+    bevande: []
+  });
   assert.deepEqual(state.eqFilter, ['disponibile', true]);
   assert.equal(state.callCount, 1);
 
@@ -63,7 +67,11 @@ test('api-menu caches successful responses', async () => {
   state.rows = [{ id: 2 }];
   const second = await handler();
   assert.equal(second.statusCode, 200);
-  assert.deepEqual(JSON.parse(second.body), [{ id: 1, nome: 'Pizza', categoria: 'classiche', prezzo_cents: 600, ingredienti: [] }]);
+  assert.deepEqual(JSON.parse(second.body), {
+    pizze: [{ id: 1, nome: 'Pizza', categoria: 'classiche', prezzo_cents: 600, ingredienti: [] }],
+    panini: [],
+    bevande: []
+  });
   assert.equal(state.callCount, 1, 'db should not be hit when cache valid');
 });
 
