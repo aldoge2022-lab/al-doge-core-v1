@@ -28,29 +28,30 @@ export const handler = async (event) => {
       };
     }
 
-    // 1️⃣ Recupera menu dal database
-const { data: pizze, error } = await supabase
-  .from("menu_items")
-  .select("*");
+    // 1️⃣ Recupero menu dal database
+    const { data: pizze, error } = await supabase
+      .from("menu_items")
+      .select("*");
 
-if (error) {
-  return {
-    statusCode: 500,
-    body: JSON.stringify({
-      error: error.message,
-      details: error
-    })
-  };
-}
-
-    if (error || !pizzas) {
+    if (error) {
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: "Errore lettura menu" })
+        body: JSON.stringify({
+          error: error.message
+        })
       };
     }
 
-    // 2️⃣ Estrai ingredienti richiesti dall’utente con OpenAI
+    if (!pizze || pizze.length === 0) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error: "Menu vuoto o non trovato"
+        })
+      };
+    }
+
+    // 2️⃣ Estrai ingredienti richiesti con OpenAI
     const ai = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0,
@@ -67,36 +68,35 @@ Rispondi SOLO in JSON:
       ]
     });
 
-    let requested = [];
+    let richiesto = [];
 
     try {
-      requested = JSON.parse(ai.choices[0].message.content).ingredients || [];
+      richiesto = JSON.parse(ai.choices[0].message.content).ingredients || [];
     } catch {
-      requested = [];
+      richiesto = [];
     }
 
-    requested = requested.map(i => i.toLowerCase());
+    richiesto = richiesto.map(i => String(i).toLowerCase());
 
     // 3️⃣ Scoring deterministico
     let bestPizza = null;
     let bestScore = -1;
 
-    for (const pizza of pizzas) {
-      const ingredients = (pizza.ingredienti || []).map(i =>
+    for (const pizza of pizze) {
+      const ingredienti = (pizza.ingredienti || []).map(i =>
         String(i).toLowerCase()
       );
 
-      let score = 0;
+      let punteggio = 0;
 
-      for (const r of requested) {
-        if (ingredients.includes(r)) score += 3;
+      for (const r of richiesto) {
+        if (ingredienti.includes(r)) punteggio += 3;
       }
 
-      // bonus varietà
-      score += ingredients.length * 0.05;
+      punteggio += ingredienti.length * 0.05;
 
-      if (score > bestScore) {
-        bestScore = score;
+      if (punteggio > bestScore) {
+        bestScore = punteggio;
         bestPizza = pizza;
       }
     }
@@ -111,15 +111,27 @@ Rispondi SOLO in JSON:
       };
     }
 
-    // 4️⃣ Risposta finale pulita
+    // 🔎 Supporto sia camelCase che uppercase colonne
+    const nome =
+      bestPizza.nome ||
+      bestPizza.Nome ||
+      bestPizza.name ||
+      "Pizza";
+
+    const prezzo =
+      bestPizza.prezzo ||
+      bestPizza.Prezzo ||
+      bestPizza.price ||
+      0;
+
     return {
       statusCode: 200,
       body: JSON.stringify({
-        reply: `Ti consiglio la ${bestPizza.Nome} a €${bestPizza.Prezzo}.`,
+        reply: `Ti consiglio la ${nome} a €${prezzo}.`,
         pizza: {
           id: bestPizza.id,
-          nome: bestPizza.Nome,
-          prezzo: bestPizza.Prezzo
+          nome,
+          prezzo
         }
       })
     };
@@ -127,7 +139,10 @@ Rispondi SOLO in JSON:
   } catch (err) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Errore interno", details: err.message })
+      body: JSON.stringify({
+        error: "Errore interno",
+        details: err.message
+      })
     };
   }
 };
