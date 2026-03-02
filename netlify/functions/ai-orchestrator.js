@@ -231,6 +231,60 @@ function toCartUpdate(toolName, output) {
   };
 }
 
+// ===============================
+// MENU KNOWLEDGE TOOLS (V3.5)
+// ===============================
+
+async function loadMenuSafe() {
+  const catalog = await loadMenu();
+  return flattenCatalog(catalog);
+}
+
+function normalizeText(str) {
+  return String(str || '').toLowerCase();
+}
+
+async function searchMenuItems(query) {
+  const items = await loadMenuSafe();
+  const q = normalizeText(query);
+
+  return items
+    .filter(item => {
+      const name = normalizeText(item.name);
+      const ingredients = [
+        ...(Array.isArray(item.ingredients) ? item.ingredients : []),
+        ...(Array.isArray(item.ingredienti) ? item.ingredienti : [])
+      ].map(normalizeText);
+
+      return (
+        name.includes(q) ||
+        ingredients.some(i => i.includes(q))
+      );
+    })
+    .slice(0, 5)
+    .map(item => ({
+      id: String(item.id),
+      name: item.name,
+      ingredients: item.ingredients || item.ingredienti || [],
+      price: item.price_cents ?? item.price ?? 0
+    }));
+}
+
+async function getMenuItemDetails(itemId) {
+  const items = await loadMenuSafe();
+  const item = items.find(i => String(i.id) === String(itemId));
+
+  if (!item) return null;
+
+  return {
+    id: String(item.id),
+    name: item.name,
+    ingredients: item.ingredients || item.ingredienti || [],
+    price: item.price_cents ?? item.price ?? 0,
+    tags: item.tags || []
+  };
+}
+
 async function runToolCall(toolCall, { cart, validIngredientIds }) {
   const args = parseArgs(toolCall.arguments);
 
@@ -264,6 +318,16 @@ async function runToolCall(toolCall, { cart, validIngredientIds }) {
 
   if (toolCall.name === 'suggest_pairing') {
     return { ok: true };
+  }
+
+  if (toolCall.name === 'search_menu_items') {
+    const results = await searchMenuItems(args.query);
+    return { results };
+  }
+
+  if (toolCall.name === 'get_menu_item_details') {
+    const details = await getMenuItemDetails(args.itemId);
+    return { details };
   }
 
   return {};
@@ -417,6 +481,32 @@ exports.handler = async (event) => {
       },
       {
         type: 'function',
+        name: 'search_menu_items',
+        description: 'Cerca elementi del menu per nome o ingrediente.',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            query: { type: 'string' }
+          },
+          required: ['query']
+        }
+      },
+      {
+        type: 'function',
+        name: 'get_menu_item_details',
+        description: 'Restituisce dettagli completi di un elemento del menu.',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            itemId: { type: 'string' }
+          },
+          required: ['itemId']
+        }
+      },
+      {
+        type: 'function',
         name: 'add_menu_item_to_cart',
         description: 'Aggiunge un elemento del menu al carrello.',
         parameters: {
@@ -453,6 +543,9 @@ Sei l'orchestrator ufficiale di AL DOGE.
 Puoi:
 - Aggiungere pizze esistenti usando add_menu_item_to_cart
 - Creare pizze personalizzate usando create_custom_panino
+Hai accesso a strumenti per leggere il menu reale.
+Quando l’utente chiede ingredienti, prezzo o dettagli di un prodotto,
+DEVI usare get_menu_item_details.
 
 Regole obbligatorie:
 - Usa SOLO ingredienti presenti in questo elenco:
@@ -464,6 +557,7 @@ ${ingredientList}
 - Se l’utente chiede “con verdure”, seleziona ingredienti vegetali presenti.
 - Se personalizzi, devi usare create_custom_panino.
 - Non rispondere solo con testo quando puoi usare un tool.
+- Non cambiare prodotto se l’utente chiede dettagli.
 `
       },
       { role: 'user', content: prompt }
