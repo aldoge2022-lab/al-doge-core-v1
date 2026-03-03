@@ -53,27 +53,57 @@ function generatePizza({ richiesta, menu }) {
 }
 
 function generatePanino({ richiesta, menu }) {
-  const allowedPaninoIds = getIngredients()
+  const allowedPaninoIngredients = getIngredients()
     .filter((ingredient) => ingredient?.paninoAllowed === true)
     .filter((ingredient) => {
       const allergens = Array.isArray(ingredient?.allergens) ? ingredient.allergens : [];
       return !allergens.some((value) => String(value).toLowerCase().includes('pesce'));
-    })
+    });
+  const allowedPaninoIds = allowedPaninoIngredients
     .map((ingredient) => String(ingredient.id || '').trim().toLowerCase())
     .filter(Boolean);
 
   const allowedPaninoSet = new Set(allowedPaninoIds);
+  const normalizedRequest = String(richiesta || '').toLowerCase();
+  const requestedAllowedIds = allowedPaninoIngredients
+    .filter((ingredient) => {
+      const id = String(ingredient.id || '').toLowerCase();
+      const name = String(ingredient.name || '').toLowerCase();
+      return (id && normalizedRequest.includes(id)) || (name && normalizedRequest.includes(name));
+    })
+    .map((ingredient) => String(ingredient.id || '').toLowerCase())
+    .filter((id) => allowedPaninoSet.has(id));
+
   const available = dedupe((menu || []).flatMap((item) => item.ingredienti || []))
     .map((value) => String(value).toLowerCase())
     .filter((value) => allowedPaninoSet.has(value));
-  const ingredienti = (available.length ? available : allowedPaninoIds).slice(0, 4);
+  const prioritizedRequested = requestedAllowedIds.filter((id) => available.includes(id));
+  const fallbackPool = available.length ? available : allowedPaninoIds;
+  const ingredienti = dedupe([...prioritizedRequested, ...fallbackPool]).slice(0, 4);
+  const ingredientiTable = dedupe([
+    ...fromMenu(menu).map((ingredient) => ingredient.nome),
+    ...allowedPaninoIds
+  ]).map((nome) => {
+    const metadata = allowedPaninoIngredients.find((ingredient) => String(ingredient.id || '').toLowerCase() === nome);
+    if (metadata) {
+      return {
+        nome,
+        categoria_tecnica: 'verdura',
+        prezzo_extra: Number(metadata.supplement || 0),
+        allergeni: Array.isArray(metadata.allergens) ? metadata.allergens : []
+      };
+    }
+    const fromCatalog = fromMenu(menu).find((ingredient) => ingredient.nome === nome);
+    return fromCatalog || { nome, categoria_tecnica: 'verdura', prezzo_extra: 1.5, allergeni: [] };
+  });
+
   const built = buildItem({
     payload: {
       custom: true,
       categoria: 'panino',
       ingredienti
     },
-    ingredientiTable: fromMenu(menu),
+    ingredientiTable,
     impasti: DEFAULT_IMPASTI
   });
 

@@ -33,3 +33,14 @@ test('generatePanino returns custom panino ingredients without fish and with tec
   assert.equal(result.ingredienti.some((item) => String(item).toLowerCase().includes('tonno')), false);
   assert.equal(result.prezzo, expectedPrice);
 });
+
+test('generatePanino excludes ingredients not allowed for panino from request', () => {
+  const result = engine.generatePanino({
+    richiesta: 'fammi un panino con tonno e mozzarella',
+    menu: [{ ingredienti: ['tonno', 'mozzarella', 'pomodoro'] }]
+  });
+
+  assert.equal(result.nome, 'Panino Personalizzato');
+  assert.equal(result.ingredienti.includes('tonno'), false);
+  assert.equal(result.ingredienti.includes('mozzarella'), true);
+});
