@@ -437,9 +437,7 @@ function withTimeout(promise, timeoutMs, errorMessage) {
   const timeoutPromise = new Promise((_, reject) => {
     timer = setTimeout(
       () => {
-        if (timer) {
-          clearTimeout(timer);
-        }
+        clearTimeout(timer);
         reject(new Error(errorMessage || 'Operation timed out'));
       },
       timeoutMs
@@ -448,9 +446,7 @@ function withTimeout(promise, timeoutMs, errorMessage) {
 
   return Promise.race([
     Promise.resolve(promise).finally(() => {
-      if (timer) {
-        clearTimeout(timer);
-      }
+      clearTimeout(timer);
     }),
     timeoutPromise
   ]);
