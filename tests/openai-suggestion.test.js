@@ -58,7 +58,7 @@ test('openai-suggestion emits full AI diagnostic logging block', async () => {
   assert.equal(headers.includes('OPENAI RAW CONTENT:'), true);
   assert.equal(headers.includes('PARSED IDS:'), true);
   assert.equal(headers.includes('VALID IDS AFTER FILTER:'), true);
-  assert.equal(headers.includes('FALLBACK IDS:'), true);
+  assert.equal(headers.includes('AI IDS:'), true);
   assert.equal(headers.includes('FINAL IDS USED:'), true);
   assert.equal(headers.includes('=== AI DEBUG END ==='), true);
 });
@@ -164,6 +164,6 @@ test('openai-suggestion handles non-string IDs in tie-break sorting deterministi
   const body = JSON.parse(response.body);
   assert.deepEqual(
     body.suggestion.items.map((item) => item.id),
-    [10, 2]
+    ['2', '10']
   );
 });

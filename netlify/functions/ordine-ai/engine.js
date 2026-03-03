@@ -1,4 +1,5 @@
 const { buildItem, dedupe } = require('./build-item');
+const { getIngredients } = require('../../../core/menu/food-engine');
 
 const DEFAULT_INGREDIENTS = [
   { nome: 'pomodoro', categoria_tecnica: 'salsa', prezzo_extra: 1, allergeni: [] },
@@ -52,8 +53,20 @@ function generatePizza({ richiesta, menu }) {
 }
 
 function generatePanino({ richiesta, menu }) {
-  const available = dedupe((menu || []).flatMap((item) => item.ingredienti || [])).filter((value) => !String(value).toLowerCase().includes('tonno'));
-  const ingredienti = available.slice(0, 4);
+  const allowedPaninoIds = getIngredients()
+    .filter((ingredient) => ingredient?.paninoAllowed === true)
+    .filter((ingredient) => {
+      const allergens = Array.isArray(ingredient?.allergens) ? ingredient.allergens : [];
+      return !allergens.some((value) => String(value).toLowerCase().includes('pesce'));
+    })
+    .map((ingredient) => String(ingredient.id || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  const allowedPaninoSet = new Set(allowedPaninoIds);
+  const available = dedupe((menu || []).flatMap((item) => item.ingredienti || []))
+    .map((value) => String(value).toLowerCase())
+    .filter((value) => allowedPaninoSet.has(value));
+  const ingredienti = (available.length ? available : allowedPaninoIds).slice(0, 4);
   const built = buildItem({
     payload: {
       custom: true,

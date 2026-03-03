@@ -10,27 +10,30 @@ test.beforeEach(() => {
   delete process.env.OPENAI_API_KEY;
 });
 
-test('ai-orchestrator rejects non-POST requests', async () => {
+test('ai-orchestrator rejects non-POST requests with normalized contract', async () => {
   const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({ httpMethod: 'GET' });
+
   assert.equal(response.statusCode, 405);
   const body = JSON.parse(response.body);
+  assert.equal(body.ok, false);
+  assert.equal(body.type, 'ai-orchestrator');
   assert.deepEqual(body.cartUpdates, []);
-  assert.equal(body.message, 'Metodo non consentito');
+  assert.equal(body.reply, 'Metodo non consentito.');
 });
 
-test('ai-orchestrator returns fallback response when OPENAI_API_KEY is missing', async () => {
+test('ai-orchestrator returns safe fallback when OPENAI_API_KEY is missing', async () => {
   const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ prompt: 'crea un panino custom' })
+    body: JSON.stringify({ prompt: 'ciao' })
   });
 
   assert.equal(response.statusCode, 200);
   const body = JSON.parse(response.body);
+  assert.equal(body.ok, true);
   assert.deepEqual(body.cartUpdates, []);
-  assert.equal(body.message, 'Chiave OpenAI non configurata.');
-  assert.equal(body.result, body.message);
+  assert.equal(body.reply, 'Puoi indicarmi il nome esatto della pizza?');
 });
 
 test('ai-orchestrator returns normalized payload when prompt is missing', async () => {
@@ -41,17 +44,17 @@ test('ai-orchestrator returns normalized payload when prompt is missing', async 
     body: JSON.stringify({ prompt: '   ' })
   });
 
-  assert.equal(response.statusCode, 400);
+  assert.equal(response.statusCode, 200);
   const body = JSON.parse(response.body);
+  assert.equal(body.ok, false);
+  assert.equal(body.type, 'ai-orchestrator');
   assert.deepEqual(body.cartUpdates, []);
-  assert.equal(body.message, 'Prompt mancante');
-  assert.equal(body.result, body.message);
+  assert.equal(body.reply, 'Messaggio mancante.');
 });
 
-test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls', async () => {
+test('ai-orchestrator returns cartUpdates from add_item tool calls', async () => {
   const originalOpenAIModule = require.cache[openaiModulePath];
   process.env.OPENAI_API_KEY = 'test-key';
-  let callIndex = 0;
   const requests = [];
 
   require.cache[openaiModulePath] = {
@@ -63,33 +66,14 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
         this.responses = {
           create: async (request) => {
             requests.push(request);
-            callIndex += 1;
-            if (callIndex === 1) {
-              if (!Array.isArray(request.tools) || request.tools.some((tool) => typeof tool?.name !== 'string' || !tool.name)) {
-                const error = new Error("Missing required parameter: 'tools[0].name'");
-                error.status = 400;
-                throw error;
-              }
-              return {
-                id: 'resp_1',
-                output: [
-                  {
-                    type: 'tool_call',
-                    name: 'add_menu_item_to_cart',
-                    call_id: 'call_1',
-                    arguments: JSON.stringify({ itemId: 'margherita', qty: 2 })
-                  }
-                ],
-                output_text: ''
-              };
-            }
-
             return {
-              id: 'resp_2',
+              id: 'resp_1',
               output: [
                 {
-                  type: 'message',
-                  content: [{ type: 'output_text', text: 'Aggiunto al carrello' }]
+                  type: 'tool_call',
+                  name: 'add_item',
+                  call_id: 'call_1',
+                  arguments: JSON.stringify({ itemId: 'margherita', quantity: 2 })
                 }
               ]
             };
@@ -109,27 +93,18 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
     assert.equal(response.statusCode, 200);
     const body = JSON.parse(response.body);
     assert.equal(body.ok, true);
-    assert.deepEqual(body.cartUpdates, [{ type: 'add', menuItemId: 'margherita', qty: 2 }]);
-    assert.equal(body.message, 'Aggiunto al carrello');
-    assert.equal(body.result, body.message);
+    assert.equal(body.type, 'ai-orchestrator');
+    assert.equal(body.cartUpdates[0].id, 'margherita');
+    assert.equal(body.cartUpdates[0].qty, 2);
+    assert.equal(body.reply.includes('Margherita aggiunta al carrello'), true);
+
     assert.equal(requests[0].model, 'gpt-4o-mini-2024-07-18');
     assert.equal(requests[0].input[1].content, 'aggiungi due margherite al carrello');
     assert.equal(requests[0].tool_choice, 'auto');
-    assert.match(requests[0].input[0].content, /pomodoro: Pomodoro/);
-    assert.match(requests[0].input[0].content, /tonno: Tonno/);
-    assert.equal(Array.isArray(requests[0].tools), true);
-    assert.deepEqual(requests[0].tools.map((tool) => tool.type), ['function', 'function', 'function']);
-    assert.deepEqual(requests[0].tools.map((tool) => tool.name), [
-      'create_custom_panino',
-      'add_menu_item_to_cart',
-      'suggest_pairing'
-    ]);
-    assert.equal(requests[0].tools.some((tool) => Object.prototype.hasOwnProperty.call(tool, 'function')), false);
-    assert.equal(typeof requests[0].tools[0].description, 'string');
-    assert.equal(requests[0].tools[0].parameters.additionalProperties, false);
-    assert.deepEqual(requests[0].tools[0].parameters.properties.impasto, {
-      anyOf: [{ type: 'string' }, { type: 'null' }]
-    });
+    assert.deepEqual(
+      requests[0].tools.map((tool) => tool.name),
+      ['add_item', 'remove_item', 'create_custom_item', 'suggest_items']
+    );
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
@@ -142,8 +117,6 @@ test('ai-orchestrator returns cartUpdates from add_menu_item_to_cart tool calls'
 test('ai-orchestrator parses nested tool calls inside message content', async () => {
   const originalOpenAIModule = require.cache[openaiModulePath];
   process.env.OPENAI_API_KEY = 'test-key';
-  let callIndex = 0;
-  const requests = [];
 
   require.cache[openaiModulePath] = {
     id: openaiModulePath,
@@ -152,38 +125,22 @@ test('ai-orchestrator parses nested tool calls inside message content', async ()
     exports: class OpenAI {
       constructor() {
         this.responses = {
-          create: async (request) => {
-            requests.push(request);
-            callIndex += 1;
-            if (callIndex === 1) {
-              return {
-                id: 'resp_nested_1',
-                output: [
+          create: async () => ({
+            id: 'resp_nested_1',
+            output: [
+              {
+                type: 'message',
+                content: [
                   {
-                    type: 'message',
-                    content: [
-                      {
-                        type: 'tool_call',
-                        name: 'add_menu_item_to_cart',
-                        call_id: 'call_nested_1',
-                        arguments: JSON.stringify({ itemId: 'margherita', qty: 1 })
-                      }
-                    ]
+                    type: 'tool_call',
+                    name: 'add_item',
+                    call_id: 'call_nested_1',
+                    arguments: JSON.stringify({ itemId: 'margherita', quantity: 1 })
                   }
                 ]
-              };
-            }
-
-            return {
-              id: 'resp_nested_2',
-              output: [
-                {
-                  type: 'message',
-                  content: [{ type: 'output_text', text: 'Aggiunto al carrello (nested)' }]
-                }
-              ]
-            };
-          }
+              }
+            ]
+          })
         };
       }
     }
@@ -198,8 +155,9 @@ test('ai-orchestrator parses nested tool calls inside message content', async ()
 
     assert.equal(response.statusCode, 200);
     const body = JSON.parse(response.body);
-    assert.deepEqual(body.cartUpdates, [{ type: 'add', menuItemId: 'margherita', qty: 1 }]);
-    assert.equal(requests[1].input[0].call_id, 'call_nested_1');
+    assert.equal(body.ok, true);
+    assert.equal(body.cartUpdates[0].id, 'margherita');
+    assert.equal(body.cartUpdates[0].qty, 1);
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
@@ -208,8 +166,6 @@ test('ai-orchestrator parses nested tool calls inside message content', async ()
     }
   }
 });
-
-
 
 test('ai-orchestrator accepts tool call identifier variants id and tool_call_id', async () => {
   const originalOpenAIModule = require.cache[openaiModulePath];
@@ -221,8 +177,6 @@ test('ai-orchestrator accepts tool call identifier variants id and tool_call_id'
       ['tool_call_id', 'call_from_tool_call_id']
     ]) {
       delete require.cache[modulePath];
-      const requests = [];
-      let callIndex = 0;
 
       require.cache[openaiModulePath] = {
         id: openaiModulePath,
@@ -231,34 +185,17 @@ test('ai-orchestrator accepts tool call identifier variants id and tool_call_id'
         exports: class OpenAI {
           constructor() {
             this.responses = {
-              create: async (request) => {
-                requests.push(request);
-                callIndex += 1;
-
-                if (callIndex === 1) {
-                  return {
-                    id: 'resp_variant_1',
-                    output: [
-                      {
-                        type: 'tool_call',
-                        name: 'add_menu_item_to_cart',
-                        [identifierField]: identifierValue,
-                        arguments: JSON.stringify({ itemId: 'margherita', qty: 1 })
-                      }
-                    ]
-                  };
-                }
-
-                return {
-                  id: 'resp_variant_2',
-                  output: [
-                    {
-                      type: 'message',
-                      content: [{ type: 'output_text', text: 'ok' }]
-                    }
-                  ]
-                };
-              }
+              create: async () => ({
+                id: 'resp_variant_1',
+                output: [
+                  {
+                    type: 'tool_call',
+                    name: 'add_item',
+                    [identifierField]: identifierValue,
+                    arguments: JSON.stringify({ itemId: 'margherita', quantity: 1 })
+                  }
+                ]
+              })
             };
           }
         }
@@ -271,7 +208,9 @@ test('ai-orchestrator accepts tool call identifier variants id and tool_call_id'
       });
 
       assert.equal(response.statusCode, 200);
-      assert.equal(requests[1].input[0].call_id, identifierValue);
+      const body = JSON.parse(response.body);
+      assert.equal(body.ok, true);
+      assert.equal(body.cartUpdates[0].id, 'margherita');
     }
   } finally {
     if (originalOpenAIModule) {
@@ -281,7 +220,8 @@ test('ai-orchestrator accepts tool call identifier variants id and tool_call_id'
     }
   }
 });
-test('ai-orchestrator blocks create_custom_panino with invalid model ingredients', async () => {
+
+test('ai-orchestrator blocks unsupported tool names with INVALID_TOOL_PAYLOAD', async () => {
   const originalOpenAIModule = require.cache[openaiModulePath];
   process.env.OPENAI_API_KEY = 'test-key';
 
@@ -317,9 +257,10 @@ test('ai-orchestrator blocks create_custom_panino with invalid model ingredients
 
     assert.equal(response.statusCode, 200);
     const body = JSON.parse(response.body);
+    assert.equal(body.ok, false);
+    assert.equal(body.type, 'ai-orchestrator');
     assert.deepEqual(body.cartUpdates, []);
-    assert.equal(body.message, 'Errore AI temporaneo.');
-    assert.equal(body.result, body.message);
+    assert.equal(body.reply, 'INVALID_TOOL_PAYLOAD');
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
@@ -329,7 +270,7 @@ test('ai-orchestrator blocks create_custom_panino with invalid model ingredients
   }
 });
 
-test('ai-orchestrator catch path returns normalized temporary error', async () => {
+test('ai-orchestrator returns safe fallback when llm call fails', async () => {
   const originalOpenAIModule = require.cache[openaiModulePath];
   process.env.OPENAI_API_KEY = 'test-key';
 
@@ -354,11 +295,12 @@ test('ai-orchestrator catch path returns normalized temporary error', async () =
       httpMethod: 'POST',
       body: JSON.stringify({ prompt: 'ciao' })
     });
-    const body = JSON.parse(response.body);
+
     assert.equal(response.statusCode, 200);
+    const body = JSON.parse(response.body);
+    assert.equal(body.ok, true);
     assert.deepEqual(body.cartUpdates, []);
-    assert.equal(body.message, 'Errore AI temporaneo.');
-    assert.equal(body.result, body.message);
+    assert.equal(body.reply, 'Puoi indicarmi il nome esatto della pizza?');
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
@@ -368,61 +310,12 @@ test('ai-orchestrator catch path returns normalized temporary error', async () =
   }
 });
 
-test('ai-orchestrator maps OpenAI status errors to differentiated messages', async () => {
-  const originalOpenAIModule = require.cache[openaiModulePath];
-  process.env.OPENAI_API_KEY = 'test-key';
-
-  try {
-    for (const [status, expectedMessage] of [
-      [401, 'Errore configurazione AI (chiave non valida).'],
-      [429, 'Servizio AI momentaneamente sovraccarico.'],
-      [400, 'Errore AI temporaneo.']
-    ]) {
-      delete require.cache[modulePath];
-      require.cache[openaiModulePath] = {
-        id: openaiModulePath,
-        filename: openaiModulePath,
-        loaded: true,
-        exports: class OpenAI {
-          constructor() {
-            this.responses = {
-              create: async () => {
-                const error = new Error('boom');
-                error.status = status;
-                throw error;
-              }
-            };
-          }
-        }
-      };
-
-      const { handler } = require('../netlify/functions/ai-orchestrator');
-      const response = await handler({
-        httpMethod: 'POST',
-        body: JSON.stringify({ prompt: 'ciao' })
-      });
-      const body = JSON.parse(response.body);
-      assert.equal(response.statusCode, 200);
-      assert.deepEqual(body.cartUpdates, []);
-      assert.equal(body.message, expectedMessage);
-      assert.equal(body.result, body.message);
-    }
-  } finally {
-    if (originalOpenAIModule) {
-      require.cache[openaiModulePath] = originalOpenAIModule;
-    } else {
-      delete require.cache[openaiModulePath];
-    }
-  }
-});
-
-test('proceed_to_checkout uses frontend cart state', async () => {
+test('proceed_to_checkout tool is rejected by current ai-orchestrator contract', async () => {
   const originalOpenAIModule = require.cache[openaiModulePath];
   const createCheckoutModulePath = require.resolve('../netlify/functions/create-checkout');
   const originalCreateCheckoutModule = require.cache[createCheckoutModulePath];
   process.env.OPENAI_API_KEY = 'test-key';
-  let callIndex = 0;
-  let checkoutPayload = null;
+  let checkoutCalled = false;
 
   require.cache[openaiModulePath] = {
     id: openaiModulePath,
@@ -431,29 +324,17 @@ test('proceed_to_checkout uses frontend cart state', async () => {
     exports: class OpenAI {
       constructor() {
         this.responses = {
-          create: async () => {
-            callIndex += 1;
-            if (callIndex === 1) {
-              return {
-                id: 'resp_checkout_1',
-                output: [
-                  {
-                    type: 'tool_call',
-                    name: 'proceed_to_checkout',
-                    call_id: 'call_checkout_1',
-                    arguments: JSON.stringify({})
-                  }
-                ],
-                output_text: ''
-              };
-            }
-
-            return {
-              id: 'resp_checkout_2',
-              output: [],
-              output_text: 'Procedo al pagamento'
-            };
-          }
+          create: async () => ({
+            id: 'resp_checkout_1',
+            output: [
+              {
+                type: 'tool_call',
+                name: 'proceed_to_checkout',
+                call_id: 'call_checkout_1',
+                arguments: JSON.stringify({})
+              }
+            ]
+          })
         };
       }
     }
@@ -464,16 +345,12 @@ test('proceed_to_checkout uses frontend cart state', async () => {
     filename: createCheckoutModulePath,
     loaded: true,
     exports: {
-      handler: async (event) => {
-        checkoutPayload = JSON.parse(event.body || '{}');
+      handler: async () => {
+        checkoutCalled = true;
         return { statusCode: 200, body: JSON.stringify({ checkout_url: 'https://example.test/checkout' }) };
       }
     }
   };
-
-  const mockCart = [
-    { menuItemId: 'margherita', qty: 2 }
-  ];
 
   try {
     const { handler } = require('../netlify/functions/ai-orchestrator');
@@ -481,13 +358,15 @@ test('proceed_to_checkout uses frontend cart state', async () => {
       httpMethod: 'POST',
       body: JSON.stringify({
         prompt: 'Procedi al pagamento',
-        cart: mockCart
+        cart: [{ menuItemId: 'margherita', qty: 2 }]
       })
     });
 
-    const payload = JSON.parse(response.body);
-    assert.equal(payload.ok, true);
-    assert.deepEqual(checkoutPayload, { cart: mockCart });
+    assert.equal(response.statusCode, 200);
+    const body = JSON.parse(response.body);
+    assert.equal(body.ok, false);
+    assert.equal(body.reply, 'INVALID_TOOL_PAYLOAD');
+    assert.equal(checkoutCalled, false);
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;

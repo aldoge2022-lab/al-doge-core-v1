@@ -13,7 +13,13 @@ function jsonResponse(statusCode, payload) {
 
 function activeMenuFromCatalog(inputCatalog) {
   const sourceCatalog = inputCatalog && Array.isArray(inputCatalog.menu) ? inputCatalog : catalogData;
-  return (sourceCatalog.menu || []).filter((item) => item && item.active && item.id);
+  return (sourceCatalog.menu || [])
+    .filter((item) => item && item.active && item.id !== null && item.id !== undefined)
+    .map((item) => ({
+      ...item,
+      id: String(item.id).trim()
+    }))
+    .filter((item) => item.id);
 }
 
 function fallbackIdsFromPrompt(prompt, activeItems) {
