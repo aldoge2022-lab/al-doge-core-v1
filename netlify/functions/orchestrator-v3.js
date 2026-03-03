@@ -24,7 +24,17 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type'
 };
 
-const RECOMMENDATION_REGEX = /\b(consigli|qualcosa|leggera|piccante|vegetariana|senza|con)\b/i;
+const PRIMARY_RECOMMENDATION_TOKENS = ['consigli', 'qualcosa', 'leggera', 'piccante', 'vegetariana'];
+const SECONDARY_RECOMMENDATION_TOKENS = [...PRIMARY_RECOMMENDATION_TOKENS, 'senza', 'con'];
+const PRIMARY_RECOMMENDATION_REGEX = new RegExp(
+  `\\b(${PRIMARY_RECOMMENDATION_TOKENS.join('|')})\\b`,
+  'i'
+);
+const RECOMMENDATION_REGEX = new RegExp(
+  `\\b(${SECONDARY_RECOMMENDATION_TOKENS.join('|')})\\b`,
+  'i'
+);
+const PICCANTE_TOKEN = 'piccante';
 const LLM_TIMEOUT_MS = 12000;
 const DEFAULT_RECOMMENDATION_SCORE = 1;
 
@@ -154,9 +164,7 @@ function detectRecommendationIntent(message, domain) {
   }
 
   const normalizedMessage = String(message || '');
-  const hasPrimaryToken = /\b(consigli|qualcosa|leggera|piccante|vegetariana)\b/i.test(
-    normalizedMessage
-  );
+  const hasPrimaryToken = PRIMARY_RECOMMENDATION_REGEX.test(normalizedMessage);
   const hasQuestionTone = normalizedMessage.includes('?');
 
   if (!RECOMMENDATION_REGEX.test(normalizedMessage)) {
@@ -177,7 +185,7 @@ function normalizeCatalogIngredients(item) {
 
 function buildRecommendationResponse(message) {
   const normalizedMessage = String(message || '').toLowerCase();
-  const wantsPiccante = normalizedMessage.includes('piccante');
+  const wantsPiccante = normalizedMessage.includes(PICCANTE_TOKEN);
   const wantsVegetariana = normalizedMessage.includes('vegetar');
   const wantsLeggera = normalizedMessage.includes('legger');
   const desiredIngredients = extractValidIngredients(message);
@@ -199,7 +207,9 @@ function buildRecommendationResponse(message) {
       reasonParts.push(`Contiene ${ingredientMatches.join(', ')}`);
     }
 
-    const hasPiccante = tags.some((tag) => tag.includes('piccante')) || ingredients.some((id) => id.includes('piccante'));
+    const hasPiccante =
+      tags.some((tag) => tag.includes(PICCANTE_TOKEN)) ||
+      ingredients.some((id) => id.includes(PICCANTE_TOKEN));
     if (wantsPiccante && hasPiccante) {
       score += 3;
       reasonParts.push('Nota piccante');
