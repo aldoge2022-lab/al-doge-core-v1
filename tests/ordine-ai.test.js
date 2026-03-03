@@ -168,6 +168,132 @@ test('returns light pizza reply when message asks for a light pizza', async () =
   assert.match(JSON.parse(response.body).reply, /Pizza leggera creata per te:/);
 });
 
+test('suggestion for "panino con bufala" stays in panino domain and includes bufala', async () => {
+  menuItemsRows = [
+    {
+      nome: 'Panino Bufala',
+      prezzo: 8,
+      ingredienti: ['mozzarella di bufala', 'insalata'],
+      tag: ['panino'],
+      varianti: {},
+      promozioni: {}
+    },
+    {
+      nome: 'Pizza Verdure',
+      prezzo: 7,
+      ingredienti: ['zucchine', 'melanzane'],
+      tag: ['pizza', 'vegetariana'],
+      varianti: {},
+      promozioni: {}
+    }
+  ];
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Consigliami un panino con bufala' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.match(body.reply, /Panino Bufala/);
+  assert.match(body.reply.toLowerCase(), /bufala/);
+});
+
+test('suggestion for "panino senza carne" excludes meat', async () => {
+  menuItemsRows = [
+    {
+      nome: 'Panino Prosciutto',
+      prezzo: 8,
+      ingredienti: ['prosciutto', 'insalata'],
+      tag: ['panino'],
+      varianti: {},
+      promozioni: {}
+    },
+    {
+      nome: 'Panino Vegetariano',
+      prezzo: 7,
+      ingredienti: ['insalata', 'pomodoro'],
+      tag: ['panino', 'vegetariano'],
+      varianti: {},
+      promozioni: {}
+    }
+  ];
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Consigliami un panino senza carne' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.match(body.reply, /Panino Vegetariano/);
+  assert.doesNotMatch(body.reply.toLowerCase(), /prosciutto|salame|salsiccia|bacon|speck/);
+});
+
+test('suggestion for "pizza con bufala" remains in pizza domain', async () => {
+  menuItemsRows = [
+    {
+      nome: 'Panino Bufala',
+      prezzo: 8,
+      ingredienti: ['mozzarella di bufala', 'insalata'],
+      tag: ['panino'],
+      varianti: {},
+      promozioni: {}
+    },
+    {
+      nome: 'Pizza Bufala',
+      prezzo: 9,
+      ingredienti: ['pomodoro', 'mozzarella di bufala'],
+      tag: ['pizza'],
+      varianti: {},
+      promozioni: {}
+    }
+  ];
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Consigliami una pizza con bufala' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.match(body.reply, /Pizza Bufala/);
+  assert.doesNotMatch(body.reply, /Panino Bufala/);
+});
+
+test('cross-domain fallback does not occur for panino intent', async () => {
+  menuItemsRows = [
+    {
+      nome: 'Panino Classico',
+      prezzo: 7,
+      ingredienti: ['insalata', 'pomodoro'],
+      tag: ['panino'],
+      varianti: {},
+      promozioni: {}
+    },
+    {
+      nome: 'Pizza Bufala',
+      prezzo: 9,
+      ingredienti: ['pomodoro', 'mozzarella di bufala'],
+      tag: ['pizza'],
+      varianti: {},
+      promozioni: {}
+    }
+  ];
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Consigliami un panino con bufala' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.equal(body.ok, true);
+  assert.equal(body.type, 'no_match');
+  assert.equal(body.message, 'Non ho panini con bufala. Vuoi crearne uno personalizzato?');
+  assert.equal(body.reply, body.message);
+});
+
 test('creates checkout session and telegram notification for valid order', async () => {
   process.env.TELEGRAM_BOT_TOKEN = 'token';
   process.env.TELEGRAM_CHAT_ID = 'chat';

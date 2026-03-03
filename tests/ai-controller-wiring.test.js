@@ -9,20 +9,20 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
-test('ai-controller posts prompts to orchestrator-v3 netlify function', () => {
+test('ai-controller posts prompts to ai-engine netlify function', () => {
   const script = read('public/js/ai-controller.js');
   assert.match(
     script,
-    /fetch\("\/\.netlify\/functions\/orchestrator-v3",\s*\{[\s\S]*method:\s*"POST"/
+    /fetch\("\/\.netlify\/functions\/ai-engine",\s*\{[\s\S]*method:\s*"POST"/
   );
 });
 
 test('ai-controller accepts reply-based responses without legacy result validation', () => {
   const script = read('public/js/ai-controller.js');
-  assert.match(script, /typeof data\?\.\s*reply === "string"/);
+  assert.match(script, /if\s*\(!data\s*\|\|\s*!data\.reply\)/);
   assert.doesNotMatch(script, /resultBox\.textContent\s*=\s*typeof data\.result/);
   assert.doesNotMatch(script, /Risposta ricevuta ma formato non valido/);
-  assert.match(script, /data\.action === "add_to_cart"/);
+  assert.match(script, /data\.ok && data\.item/);
 });
 
 test('index.html loads ai-controller script with defer', () => {

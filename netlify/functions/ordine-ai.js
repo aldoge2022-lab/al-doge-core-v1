@@ -93,20 +93,182 @@ function extractItems(text, menuItemsByName) {
   return found;
 }
 
-function buildSuggestionReply(message, menuItems) {
+function normalizeText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function inferDomain(item) {
+  const fullText = [
+    item?.name,
+    item?.displayName,
+    ...(Array.isArray(item?.tag) ? item.tag : [])
+  ]
+    .map((value) => normalizeText(value))
+    .join(" ");
+
+  if (fullText.includes("panino") || fullText.includes("sandwich")) {
+    return "panino";
+  }
+
+  return "pizza";
+}
+
+function intentResolver(message, menuItems) {
+  const normalized = normalizeText(message);
+  const domain = normalized.includes("panino")
+    ? "panino"
+    : normalized.includes("pizza")
+      ? "pizza"
+      : "pizza";
+  const withoutMeat = normalized.includes("senza carne");
+  const knownIngredients = new Set(
+    menuItems
+      .flatMap((item) => (Array.isArray(item?.ingredienti) ? item.ingredienti : []))
+      .map((ingredient) => normalizeText(ingredient))
+      .filter(Boolean)
+  );
+  const requiredIngredients = [];
+
+  knownIngredients.forEach((ingredient) => {
+    if (normalized.includes(ingredient)) {
+      requiredIngredients.push(ingredient);
+      return;
+    }
+
+    if (ingredient.includes("bufala") && normalized.includes("bufala")) {
+      requiredIngredients.push(ingredient);
+    }
+  });
+
+  if (normalized.includes("bufala") && !requiredIngredients.some((ingredient) => ingredient.includes("bufala"))) {
+    requiredIngredients.push("bufala");
+  }
+
+  return {
+    domain,
+    withoutMeat,
+    requiredIngredients: [...new Set(requiredIngredients)],
+    hasExplicitIngredient: normalized.includes(" con ") || requiredIngredients.length > 0
+  };
+}
+
+function candidateHasMeat(item) {
+  const meatTokens = ["salame", "prosciutto", "salsiccia", "pollo", "manzo", "bacon", "speck", "carne"];
+  const ingredienti = Array.isArray(item?.ingredienti) ? item.ingredienti.map((ingredient) => normalizeText(ingredient)) : [];
+  return ingredienti.some((ingredient) => meatTokens.some((token) => ingredient.includes(token)));
+}
+
+function scoreCandidate(item, intent) {
+  const lowerTags = Array.isArray(item?.tag) ? item.tag.map((tag) => normalizeText(tag)) : [];
+  const lowerIngredients = Array.isArray(item?.ingredienti) ? item.ingredienti.map((ingredient) => normalizeText(ingredient)) : [];
+  let score = 0;
+
+  if (intent.withoutMeat && !candidateHasMeat(item)) {
+    score += 3;
+  }
+
+  for (const requested of intent.requiredIngredients) {
+    const matches = lowerIngredients.some((ingredient) => ingredient.includes(requested) || requested.includes(ingredient));
+    if (matches) {
+      score += 4;
+    }
+  }
+
+  if (lowerTags.some((tag) => tag.includes("vegetar")) && intent.withoutMeat) {
+    score += 2;
+  }
+
+  return score + (item.ingredienti.length * 0.05);
+}
+
+function scoringEngine(message, menuItems) {
   if (!menuItems.length) {
-    return "Posso consigliarti una delle nostre pizze più apprezzate. Cosa preferisci?";
+    return {
+      type: "empty",
+      message: "Posso consigliarti una delle nostre pizze più apprezzate. Cosa preferisci?"
+    };
   }
-  const lower = message.toLowerCase();
-  let pick = menuItems[0];
-  if (lower.includes("vegetar")) {
-    pick = menuItems.find((item) => item.tag.some((tag) => String(tag).toLowerCase().includes("vegetar"))) || pick;
-  } else if (lower.includes("piccant") || lower.includes("forte")) {
-    pick = menuItems.find((item) => item.tag.some((tag) => ["forte", "piccante"].includes(String(tag).toLowerCase()))) || pick;
+
+  const intent = intentResolver(message, menuItems);
+  const domainCandidates = menuItems.filter((item) => inferDomain(item) === intent.domain);
+
+  if (!domainCandidates.length) {
+    if (intent.domain === "panino") {
+      return {
+        type: "no_match",
+        ok: true,
+        message: "Non ho panini con bufala. Vuoi crearne uno personalizzato?"
+      };
+    }
+    return {
+      type: "empty",
+      message: "Posso consigliarti una delle nostre pizze più apprezzate. Cosa preferisci?"
+    };
   }
+
+  const filteredByExclusions = intent.withoutMeat
+    ? domainCandidates.filter((item) => !candidateHasMeat(item))
+    : domainCandidates;
+
+  const constrainedCandidates = intent.requiredIngredients.length
+    ? filteredByExclusions.filter((item) => {
+      const ingredients = Array.isArray(item?.ingredienti) ? item.ingredienti.map((ingredient) => normalizeText(ingredient)) : [];
+      return intent.requiredIngredients.every((required) =>
+        ingredients.some((ingredient) => ingredient.includes(required) || required.includes(ingredient))
+      );
+    })
+    : filteredByExclusions;
+
+  if (intent.hasExplicitIngredient && intent.requiredIngredients.length > 0 && constrainedCandidates.length === 0) {
+    return {
+      type: "no_match",
+      ok: true,
+      message: "Non ho panini con bufala. Vuoi crearne uno personalizzato?"
+    };
+  }
+
+  const pool = constrainedCandidates.length ? constrainedCandidates : filteredByExclusions;
+  if (!pool.length) {
+    return {
+      type: "no_match",
+      ok: true,
+      message: "Non ho panini con bufala. Vuoi crearne uno personalizzato?"
+    };
+  }
+
+  const scored = pool
+    .map((item) => ({
+      item,
+      score: scoreCandidate(item, intent)
+    }))
+    .sort((a, b) => b.score - a.score || a.item.price - b.item.price);
+
+  return {
+    type: "pick",
+    item: scored[0].item
+  };
+}
+
+function buildSuggestionReply(message, menuItems) {
+  const scored = scoringEngine(message, menuItems);
+  if (scored.type === "empty") {
+    return { reply: scored.message };
+  }
+  if (scored.type === "no_match") {
+    return {
+      ok: true,
+      type: "no_match",
+      message: scored.message,
+      reply: scored.message
+    };
+  }
+
+  const pick = scored.item;
   const ingredienti = pick.ingredienti.length ? ` Ingredienti: ${pick.ingredienti.join(", ")}.` : "";
   const varianti = Object.keys(pick.varianti).length ? ` Varianti: ${Object.keys(pick.varianti).join(", ")}.` : "";
-  return `Ti consiglio ${pick.displayName} (€${pick.price}).${ingredienti}${varianti}`.trim();
+  return {
+    reply: `Ti consiglio ${pick.displayName} (€${pick.price}).${ingredienti}${varianti}`.trim()
+  };
 }
 
 function pizzaUnitAmount(item, pizzasById) {
@@ -386,9 +548,7 @@ Appena confermato, iniziamo la preparazione.`
 
     return {
       statusCode: 200,
-      body: JSON.stringify({
-        reply: buildSuggestionReply(message, dynamicMenuItems)
-      })
+      body: JSON.stringify(buildSuggestionReply(message, dynamicMenuItems))
     };
   } catch (error) {
     console.error("Errore ordine AI:", error);
@@ -400,3 +560,6 @@ Appena confermato, iniziamo la preparazione.`
     };
   }
 };
+
+exports.intentResolver = intentResolver;
+exports.scoringEngine = scoringEngine;
