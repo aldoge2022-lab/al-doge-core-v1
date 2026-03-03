@@ -488,6 +488,8 @@ async function runLLM(prompt) {
 
 function isHealthRequest(event) {
   const path = String(event.path || event.rawUrl || '').toLowerCase();
+  // Accept legacy orchestrator-v3 health path for backward compatibility during migration.
+  // TODO: drop orchestrator-v3/health alias once all clients use ai-orchestrator/health.
   return path.includes('ai-orchestrator/health') || path.includes('orchestrator-v3/health');
 }
 

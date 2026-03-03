@@ -68,7 +68,7 @@ test('returns safe fallback when model does not return tool calls', async () => 
   }
 });
 
-test('invalid ingredient returns INVALID_TOOL_PAYLOAD and blocks pollo', async () => {
+test('invalid ingredient returns INVALID_TOOL_PAYLOAD reply and blocks pollo', async () => {
   const originalOpenAIModule = require.cache[openaiModulePath];
   process.env.OPENAI_API_KEY = 'test-key';
 
@@ -105,6 +105,7 @@ test('invalid ingredient returns INVALID_TOOL_PAYLOAD and blocks pollo', async (
     assert.equal(response.statusCode, 200);
     const body = JSON.parse(response.body);
     assert.equal(body.ok, false);
+    assert.equal(body.type, 'ai-orchestrator');
     assert.equal(body.reply, 'INVALID_TOOL_PAYLOAD');
   } finally {
     if (originalOpenAIModule) {

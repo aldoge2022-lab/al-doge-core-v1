@@ -69,10 +69,8 @@ function validateResponse(rawResponse) {
   }
 
   const ok = rawResponse.ok === true;
-  const normalizedType =
-    typeof rawResponse.type === 'string' && rawResponse.type.trim()
-      ? rawResponse.type.trim()
-      : DEFAULT_RESPONSE_TYPE;
+  const trimmedType = typeof rawResponse.type === 'string' ? rawResponse.type.trim() : '';
+  const normalizedType = trimmedType || DEFAULT_RESPONSE_TYPE;
   const normalizedReply = normalizeReply(rawResponse.reply);
   const hasNullCartUpdatesOnSuccess = ok && rawResponse.cartUpdates == null;
   const normalizedCartUpdates = Array.isArray(rawResponse.cartUpdates)
