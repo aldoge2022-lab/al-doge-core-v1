@@ -24,7 +24,7 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type'
 };
 
-const RECOMMENDATION_REGEX = /consigli|qualcosa|leggera|piccante|vegetariana|senza|con/i;
+const RECOMMENDATION_REGEX = /\b(consigli|qualcosa|leggera|piccante|vegetariana|senza|con)\b/i;
 const LLM_TIMEOUT_MS = 12000;
 
 function jsonResponse(statusCode, payload) {
@@ -242,7 +242,9 @@ function buildRecommendationResponse(message) {
   }));
 
   const names = suggestions.map((suggestion) => suggestion.name);
-  const reply = `Ti consiglio ${names.join(' oppure ')}. Vuoi aggiungerla al carrello?`;
+  const replyPrompt =
+    suggestions.length > 1 ? 'Vuoi aggiungerle al carrello?' : 'Vuoi aggiungerla al carrello?';
+  const reply = `Ti consiglio ${names.join(' oppure ')}. ${replyPrompt}`;
 
   return {
     ok: true,
@@ -431,21 +433,22 @@ function collectToolCalls(outputs) {
 }
 
 function withTimeout(promise, timeoutMs, errorMessage) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
+  let timer = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(
       () => reject(new Error(errorMessage || 'Operation timed out')),
       timeoutMs
     );
-    promise
-      .then((value) => {
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
   });
+
+  return Promise.race([
+    Promise.resolve(promise).finally(() => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }),
+    timeoutPromise
+  ]);
 }
 
 async function runLLM(prompt) {

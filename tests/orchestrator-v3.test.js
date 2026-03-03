@@ -261,7 +261,10 @@ test('serves catalog recommendations for conversational requests', async () => {
   assert.ok(body.suggestions.length > 0);
   const suggestionNames = body.suggestions.map((s) => s.name || s).filter(Boolean);
   assert.ok(body.reply.toLowerCase().includes('ti consiglio'));
-  assert.ok(body.reply.toLowerCase().includes('vuoi aggiungerla'));
+  const normalizedReply = body.reply.toLowerCase();
+  assert.ok(
+    normalizedReply.includes('vuoi aggiungerla') || normalizedReply.includes('vuoi aggiungerle')
+  );
   assert.ok(suggestionNames.length > 0);
 });
 
