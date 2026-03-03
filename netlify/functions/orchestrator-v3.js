@@ -432,7 +432,10 @@ function collectToolCalls(outputs) {
 
 function withTimeout(promise, timeoutMs, errorMessage) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(errorMessage || 'timeout')), timeoutMs);
+    const timer = setTimeout(
+      () => reject(new Error(errorMessage || 'Operation timed out')),
+      timeoutMs
+    );
     promise
       .then((value) => {
         clearTimeout(timer);
