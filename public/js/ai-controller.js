@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
 
-      const response = await fetch("/.netlify/functions/ai-engine", {
+      const response = await fetch("/.netlify/functions/ordine-ai", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -32,15 +32,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await response.json();
 
-      if (!data || !data.reply) {
+      if (!data) {
         resultBox.textContent = "Errore durante la richiesta AI.";
         return;
       }
 
-      resultBox.textContent = data.reply;
+      // Messaggio principale
+      if (data.reply) {
+        resultBox.textContent = data.reply;
+      } else {
+        resultBox.textContent = "Nessuna risposta disponibile.";
+      }
 
-      // Se l'AI restituisce un item valido → auto add
-      if (data.ok && data.item && typeof window.addToCart === "function") {
+      // Auto-add al carrello se presente item valido
+      if (
+        data.ok === true &&
+        data.item &&
+        typeof window.addToCart === "function"
+      ) {
         window.addToCart(data.item);
       }
 
