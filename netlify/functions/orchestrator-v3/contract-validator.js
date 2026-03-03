@@ -1,5 +1,7 @@
+const DEFAULT_RESPONSE_TYPE = 'ai-orchestrator';
 const FALLBACK_RESPONSE = Object.freeze({
   ok: false,
+  type: DEFAULT_RESPONSE_TYPE,
   cartUpdates: [],
   reply: 'Errore interno sistema ordine.'
 });
@@ -67,6 +69,10 @@ function validateResponse(rawResponse) {
   }
 
   const ok = rawResponse.ok === true;
+  const normalizedType =
+    typeof rawResponse.type === 'string' && rawResponse.type.trim()
+      ? rawResponse.type.trim()
+      : DEFAULT_RESPONSE_TYPE;
   const normalizedReply = normalizeReply(rawResponse.reply);
   const hasNullCartUpdatesOnSuccess = ok && rawResponse.cartUpdates == null;
   const normalizedCartUpdates = Array.isArray(rawResponse.cartUpdates)
@@ -97,6 +103,7 @@ function validateResponse(rawResponse) {
 
   const validated = {
     ok,
+    type: normalizedType,
     cartUpdates: normalizedCartUpdates,
     reply: normalizedReply,
     suggestions: normalizedSuggestions
@@ -115,5 +122,6 @@ function validateResponse(rawResponse) {
 
 module.exports = {
   FALLBACK_RESPONSE,
+  DEFAULT_RESPONSE_TYPE,
   validateResponse
 };

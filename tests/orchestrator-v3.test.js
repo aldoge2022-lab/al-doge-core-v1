@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const orchestratorPath = require.resolve('../netlify/functions/orchestrator-v3');
+const orchestratorPath = require.resolve('../netlify/functions/ai-orchestrator');
 const openaiModulePath = require.resolve('openai');
 
 function clearModules() {
@@ -14,11 +14,11 @@ test.beforeEach(() => {
 });
 
 test('health endpoint reports catalog and schema loaded', async () => {
-  const { handler } = require('../netlify/functions/orchestrator-v3');
-  const response = await handler({
-    httpMethod: 'GET',
-    path: '/.netlify/functions/orchestrator-v3/health'
-  });
+    const { handler } = require('../netlify/functions/ai-orchestrator');
+    const response = await handler({
+      httpMethod: 'GET',
+      path: '/.netlify/functions/ai-orchestrator/health'
+    });
 
   assert.equal(response.statusCode, 200);
   const body = JSON.parse(response.body);
@@ -48,7 +48,7 @@ test('returns safe fallback when model does not return tool calls', async () => 
   };
 
   try {
-    const { handler } = require('../netlify/functions/orchestrator-v3');
+    const { handler } = require('../netlify/functions/ai-orchestrator');
     const response = await handler({
       httpMethod: 'POST',
       body: JSON.stringify({ message: 'ciao' })
@@ -96,7 +96,7 @@ test('invalid ingredient returns INVALID_TOOL_PAYLOAD and blocks pollo', async (
   };
 
   try {
-    const { handler } = require('../netlify/functions/orchestrator-v3');
+    const { handler } = require('../netlify/functions/ai-orchestrator');
     const response = await handler({
       httpMethod: 'POST',
       body: JSON.stringify({ message: 'aggiungi pizza con pollo' })
@@ -105,7 +105,7 @@ test('invalid ingredient returns INVALID_TOOL_PAYLOAD and blocks pollo', async (
     assert.equal(response.statusCode, 200);
     const body = JSON.parse(response.body);
     assert.equal(body.ok, false);
-    assert.equal(body.error, 'INVALID_TOOL_PAYLOAD');
+    assert.equal(body.reply, 'INVALID_TOOL_PAYLOAD');
   } finally {
     if (originalOpenAIModule) {
       require.cache[openaiModulePath] = originalOpenAIModule;
@@ -151,7 +151,7 @@ test('deterministic cart item ignores AI price and computes from catalog', async
   };
 
   try {
-    const { handler } = require('../netlify/functions/orchestrator-v3');
+    const { handler } = require('../netlify/functions/ai-orchestrator');
     const response = await handler({
       httpMethod: 'POST',
       body: JSON.stringify({ message: 'aggiungi due pizze classiche' })
@@ -177,7 +177,7 @@ test('deterministic cart item ignores AI price and computes from catalog', async
 
 test('suggests similar pizzas when ingredients overlap >=70%', async () => {
   delete process.env.OPENAI_API_KEY;
-  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ message: 'mozzarella e prosciutto' })
@@ -196,7 +196,7 @@ test('suggests similar pizzas when ingredients overlap >=70%', async () => {
 
 test('returns closest formaggi suggestion when match ratio threshold is met', async () => {
   delete process.env.OPENAI_API_KEY;
-  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ message: 'mozzarella e gorgonzola' })
@@ -214,7 +214,7 @@ test('returns closest formaggi suggestion when match ratio threshold is met', as
 
 test('creates deterministic custom pizza when no similar match is available', async () => {
   delete process.env.OPENAI_API_KEY;
-  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ message: 'mozzarella prosciutto rucola' })
@@ -231,7 +231,7 @@ test('creates deterministic custom pizza when no similar match is available', as
 
 test('provides recommendations when no exact ingredients are valid', async () => {
   delete process.env.OPENAI_API_KEY;
-  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ message: 'mi consigli una pizza con pollo?' })
@@ -247,7 +247,7 @@ test('provides recommendations when no exact ingredients are valid', async () =>
 
 test('serves catalog recommendations for conversational requests', async () => {
   delete process.env.OPENAI_API_KEY;
-  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ message: 'Mi consigli una pizza leggera ma saporita?' })
@@ -270,7 +270,7 @@ test('serves catalog recommendations for conversational requests', async () => {
 
 test('exact pizza name adds to cart without explicit verb', async () => {
   delete process.env.OPENAI_API_KEY;
-  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ message: 'Margherita' })
@@ -285,7 +285,7 @@ test('exact pizza name adds to cart without explicit verb', async () => {
 
 test('panino intent triggers panino generator', async () => {
   delete process.env.OPENAI_API_KEY;
-  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({
     httpMethod: 'POST',
     body: JSON.stringify({ message: 'Panino con pollo e rucola' })
@@ -326,7 +326,7 @@ test('keeps direct name matching via AI tools unchanged', async () => {
   };
 
   try {
-    const { handler } = require('../netlify/functions/orchestrator-v3');
+    const { handler } = require('../netlify/functions/ai-orchestrator');
     const response = await handler({
       httpMethod: 'POST',
       body: JSON.stringify({ message: 'aggiungi margherita' })
