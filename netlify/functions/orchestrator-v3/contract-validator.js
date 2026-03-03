@@ -24,6 +24,42 @@ function normalizeReply(reply) {
   return reply.trim();
 }
 
+function normalizeSuggestions(rawSuggestions) {
+  if (!Array.isArray(rawSuggestions)) {
+    return [];
+  }
+
+  return rawSuggestions
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const name = normalizeReply(entry);
+        return name ? { name } : null;
+      }
+
+      if (entry && typeof entry === 'object') {
+        const id = normalizeReply(entry.id);
+        const name = normalizeReply(entry.name || id);
+        const reason = normalizeReply(entry.reason);
+
+        if (!name) {
+          return null;
+        }
+
+        const normalized = { name };
+        if (id) {
+          normalized.id = id;
+        }
+        if (reason) {
+          normalized.reason = reason;
+        }
+        return normalized;
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+}
+
 function validateResponse(rawResponse) {
   if (!rawResponse || typeof rawResponse !== 'object') {
     return { ...FALLBACK_RESPONSE };
@@ -49,11 +85,8 @@ function validateResponse(rawResponse) {
         .filter(Boolean)
     : [];
 
-  const normalizedSuggestions = Array.isArray(rawResponse.suggestions)
-    ? rawResponse.suggestions
-        .map((suggestion) => String(suggestion || '').trim())
-        .filter(Boolean)
-    : [];
+  const normalizedSuggestions = normalizeSuggestions(rawResponse.suggestions);
+  const mode = typeof rawResponse.mode === 'string' ? rawResponse.mode.trim() : undefined;
 
   const cartUpdatesAreValid = normalizedCartUpdates.every(isValidCartUpdate);
 
@@ -70,6 +103,10 @@ function validateResponse(rawResponse) {
 
   if (validated.suggestions && validated.suggestions.length === 0) {
     delete validated.suggestions;
+  }
+
+  if (mode) {
+    validated.mode = mode;
   }
 
   return validated;

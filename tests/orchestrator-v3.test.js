@@ -187,8 +187,11 @@ test('suggests similar pizzas when ingredients overlap >=70%', async () => {
   const body = JSON.parse(response.body);
   assert.equal(body.ok, true);
   assert.deepEqual(body.cartUpdates, []);
+  const suggestionNames = Array.isArray(body.suggestions)
+    ? body.suggestions.map((s) => s.name || s).filter(Boolean)
+    : [];
   assert.ok(Array.isArray(body.suggestions));
-  assert.ok(body.suggestions.includes('4 Stagioni'));
+  assert.ok(suggestionNames.includes('4 Stagioni'));
 });
 
 test('returns closest formaggi suggestion when match ratio threshold is met', async () => {
@@ -203,7 +206,10 @@ test('returns closest formaggi suggestion when match ratio threshold is met', as
   const body = JSON.parse(response.body);
   assert.equal(body.ok, true);
   assert.deepEqual(body.cartUpdates, []);
-  assert.ok(body.suggestions.includes('Quattro Formaggi'));
+  const suggestionNames = Array.isArray(body.suggestions)
+    ? body.suggestions.map((s) => s.name || s).filter(Boolean)
+    : [];
+  assert.ok(suggestionNames.includes('Quattro Formaggi'));
 });
 
 test('creates deterministic custom pizza when no similar match is available', async () => {
@@ -223,7 +229,7 @@ test('creates deterministic custom pizza when no similar match is available', as
   assert.ok(body.cartUpdates[0].ingredients.includes('rucola'));
 });
 
-test('falls back gracefully when no valid ingredients are present', async () => {
+test('provides recommendations when no exact ingredients are valid', async () => {
   delete process.env.OPENAI_API_KEY;
   const { handler } = require('../netlify/functions/orchestrator-v3');
   const response = await handler({
@@ -234,7 +240,59 @@ test('falls back gracefully when no valid ingredients are present', async () => 
   assert.equal(response.statusCode, 200);
   const body = JSON.parse(response.body);
   assert.equal(body.ok, true);
-  assert.equal(body.reply, 'Puoi indicarmi il nome esatto della pizza?');
+  assert.equal(body.mode, 'recommendation');
+  assert.ok(Array.isArray(body.suggestions));
+  assert.ok(body.suggestions.length > 0);
+});
+
+test('serves catalog recommendations for conversational requests', async () => {
+  delete process.env.OPENAI_API_KEY;
+  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Mi consigli una pizza leggera ma saporita?' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.equal(body.ok, true);
+  assert.equal(body.mode, 'recommendation');
+  assert.ok(Array.isArray(body.suggestions));
+  assert.ok(body.suggestions.length > 0);
+  const suggestionNames = body.suggestions.map((s) => s.name || s).filter(Boolean);
+  assert.ok(body.reply.toLowerCase().includes('ti consiglio'));
+  assert.ok(body.reply.toLowerCase().includes('vuoi aggiungerla'));
+  assert.ok(suggestionNames.length > 0);
+});
+
+test('exact pizza name adds to cart without explicit verb', async () => {
+  delete process.env.OPENAI_API_KEY;
+  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Margherita' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.equal(body.ok, true);
+  assert.equal(body.cartUpdates.length, 1);
+  assert.equal(body.cartUpdates[0].id, 'margherita');
+});
+
+test('panino intent triggers panino generator', async () => {
+  delete process.env.OPENAI_API_KEY;
+  const { handler } = require('../netlify/functions/orchestrator-v3');
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Panino con pollo e rucola' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.equal(body.ok, true);
+  assert.equal(body.cartUpdates.length, 1);
+  assert.equal(body.cartUpdates[0].type, 'PANINO');
 });
 
 test('keeps direct name matching via AI tools unchanged', async () => {

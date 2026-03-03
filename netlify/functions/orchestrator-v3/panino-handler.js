@@ -60,6 +60,7 @@ function getMaxIngredients() {
 function handlePanino({ message, intent }) {
   const ingredients = extractIngredients(message);
   const maxIngredients = getMaxIngredients();
+  const effectiveIntent = intent === 'info' ? 'build' : intent;
 
   if (ingredients.length > maxIngredients) {
     return {
@@ -69,7 +70,7 @@ function handlePanino({ message, intent }) {
     };
   }
 
-  if (intent !== 'add' && intent !== 'build') {
+  if (effectiveIntent !== 'add' && effectiveIntent !== 'build') {
     return {
       ok: true,
       cartUpdates: [],

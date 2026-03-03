@@ -1,7 +1,7 @@
 const OpenAI = require('openai');
 const { validateResponse, FALLBACK_RESPONSE } = require('./orchestrator-v3/contract-validator');
 const { routeDomain } = require('./orchestrator-v3/domain-router');
-const { handleMenu } = require('./orchestrator-v3/menu-handler');
+const { handleMenu, findPizza, parseQty } = require('./orchestrator-v3/menu-handler');
 const { handlePanino } = require('./orchestrator-v3/panino-handler');
 const { logExecution } = require('./orchestrator-v3/logger');
 const {
@@ -23,6 +23,9 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type'
 };
+
+const RECOMMENDATION_REGEX = /consigli|qualcosa|leggera|piccante|vegetariana|senza|con/i;
+const LLM_TIMEOUT_MS = 12000;
 
 function jsonResponse(statusCode, payload) {
   return {
@@ -138,6 +141,147 @@ function runDeterministicIngredientMatch(message) {
   }
 
   return buildCustomPizzaFromIngredients({ ingredients, message });
+}
+
+function detectRecommendationIntent(message, domain) {
+  if (!message) {
+    return false;
+  }
+
+  if (domain && domain !== 'MENU') {
+    return false;
+  }
+
+  return RECOMMENDATION_REGEX.test(String(message));
+}
+
+function normalizeCatalogIngredients(item) {
+  return [
+    ...(Array.isArray(item?.ingredients) ? item.ingredients : []),
+    ...(Array.isArray(item?.ingredienti) ? item.ingredienti : [])
+  ]
+    .map(normalizeIngredientId)
+    .filter(Boolean);
+}
+
+function buildRecommendationResponse(message) {
+  const normalizedMessage = String(message || '').toLowerCase();
+  const wantsPiccante = normalizedMessage.includes('piccante');
+  const wantsVegetariana = normalizedMessage.includes('vegetar');
+  const wantsLeggera = normalizedMessage.includes('legger');
+  const desiredIngredients = extractValidIngredients(message);
+  const catalogItems = Array.from(CATALOG_ITEMS.values());
+
+  if (catalogItems.length === 0) {
+    return null;
+  }
+
+  const scored = catalogItems.map((item) => {
+    const ingredients = normalizeCatalogIngredients(item);
+    const tags = Array.isArray(item?.tags) ? item.tags.map((tag) => String(tag).toLowerCase()) : [];
+    const ingredientMatches = desiredIngredients.filter((ingredient) => ingredients.includes(ingredient));
+
+    let score = ingredientMatches.length * 2;
+    const reasonParts = [];
+
+    if (ingredientMatches.length > 0) {
+      reasonParts.push(`Contiene ${ingredientMatches.join(', ')}`);
+    }
+
+    const hasPiccante = tags.some((tag) => tag.includes('piccante')) || ingredients.some((id) => id.includes('piccante'));
+    if (wantsPiccante && hasPiccante) {
+      score += 3;
+      reasonParts.push('Nota piccante');
+    }
+
+    const hasVegetariana = tags.some((tag) => tag.includes('vegetar'));
+    if (wantsVegetariana && hasVegetariana) {
+      score += 3;
+      reasonParts.push('Opzione vegetariana');
+    }
+
+    if (wantsLeggera && ingredients.length <= 3) {
+      score += 2;
+      reasonParts.push('Leggera con pochi ingredienti');
+    }
+
+    if (score === 0 && (desiredIngredients.length === 0 || wantsPiccante || wantsVegetariana || wantsLeggera)) {
+      score = 1;
+    }
+
+    const price = Number(item?.price_cents ?? item?.price ?? item?.base_price_cents ?? 0) || 0;
+
+    return {
+      item,
+      score,
+      reason: reasonParts.join('. ') || 'Scelta dal menu',
+      price
+    };
+  });
+
+  const scoredWithPositive = scored.filter((entry) => entry.score > 0);
+  const candidates = scoredWithPositive.length > 0 ? scoredWithPositive : scored;
+
+  const top = candidates
+    .sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return a.price - b.price;
+    })
+    .slice(0, 3);
+
+  if (top.length === 0) {
+    return null;
+  }
+
+  const suggestions = top.map(({ item, reason }) => ({
+    id: String(item.id),
+    name: String(item.name || item.id),
+    reason: reason || 'Scelta dal menu'
+  }));
+
+  const names = suggestions.map((suggestion) => suggestion.name);
+  const reply = `Ti consiglio ${names.join(' oppure ')}. Vuoi aggiungerla al carrello?`;
+
+  return {
+    ok: true,
+    mode: 'recommendation',
+    cartUpdates: [],
+    suggestions,
+    reply
+  };
+}
+
+function runExactNameMatch(message, domain) {
+  if (domain && domain !== 'MENU') {
+    return null;
+  }
+
+  const pizza = findPizza(message);
+  if (!pizza) {
+    return null;
+  }
+
+  const qty = parseQty(message);
+  const baseItem = CATALOG_ITEMS.get(String(pizza.id)) || pizza;
+
+  try {
+    const orderItem = buildOrderItem({
+      baseItem,
+      extraIngredients: [],
+      removedIngredients: [],
+      quantity: qty
+    });
+
+    return {
+      ok: true,
+      cartUpdates: [orderItem],
+      reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
+    };
+  } catch {
+    return null;
+  }
 }
 
 function runDirectMatch(message) {
@@ -286,9 +430,24 @@ function collectToolCalls(outputs) {
   return toolCalls;
 }
 
+function withTimeout(promise, timeoutMs, errorMessage) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(errorMessage || 'timeout')), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 async function runLLM(prompt) {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  return client.responses.create({
+  const aiCall = client.responses.create({
     model: 'gpt-4o-mini-2024-07-18',
     input: [
       {
@@ -301,6 +460,8 @@ async function runLLM(prompt) {
     tools: TOOL_DEFINITIONS,
     tool_choice: 'auto'
   });
+
+  return withTimeout(aiCall, LLM_TIMEOUT_MS, 'llm_timeout');
 }
 
 function isHealthRequest(event) {
@@ -380,6 +541,68 @@ exports.handler = async (event) => {
       return jsonResponse(200, missingMessageResponse);
     }
 
+    const routed = routeDomain(message);
+    const recommendationIntent =
+      routed.intent !== 'add' && routed.intent !== 'build'
+        ? detectRecommendationIntent(message, routed.domain)
+        : false;
+
+    if (routed.domain === 'PANINO') {
+      const paninoResponse = handlePanino({ message, intent: routed.intent });
+      const validatedPanino = validateResponse(paninoResponse);
+
+      logExecution({
+        intent: 'panino',
+        toolUsed: validatedPanino.cartUpdates.length ? 'add_item' : null,
+        validation: validatedPanino.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedPanino.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedPanino.ok ? 'success' : 'error',
+        error: validatedPanino.ok ? null : validatedPanino.reply
+      });
+
+      return jsonResponse(200, validatedPanino);
+    }
+
+    if (recommendationIntent) {
+      const recommendation = buildRecommendationResponse(message);
+      if (recommendation) {
+        const validatedRecommendation = validateResponse(recommendation);
+
+        logExecution({
+          intent: 'recommendation',
+          toolUsed: null,
+          validation: validatedRecommendation.ok ? 'valid' : 'invalid',
+          finalCartDelta: validatedRecommendation.cartUpdates,
+          executionTimeMs: Date.now() - startedAt,
+          status: validatedRecommendation.ok ? 'success' : 'error',
+          error: validatedRecommendation.ok ? null : validatedRecommendation.reply
+        });
+
+        return jsonResponse(200, validatedRecommendation);
+      }
+    }
+
+    const directNameResponse = runExactNameMatch(message, routed.domain);
+    if (directNameResponse) {
+      const validatedNameMatch = validateResponse(directNameResponse);
+      const nameCartType = validatedNameMatch.cartUpdates[0]?.type;
+      const nameToolUsed =
+        nameCartType === 'REMOVE_ITEM' ? 'remove_item' : nameCartType || 'add_item';
+
+      logExecution({
+        intent: 'direct_name_match',
+        toolUsed: nameToolUsed,
+        validation: validatedNameMatch.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedNameMatch.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedNameMatch.ok ? 'success' : 'error',
+        error: validatedNameMatch.ok ? null : 'invalid_direct_name'
+      });
+
+      return jsonResponse(200, validatedNameMatch);
+    }
+
     const directResponse = runDirectMatch(message);
     if (directResponse) {
       const validatedDirect = validateResponse(directResponse);
@@ -434,66 +657,81 @@ exports.handler = async (event) => {
         error: null
       };
     } else {
-      const aiResponse = await runLLM(message);
-      const toolCalls = collectToolCalls(aiResponse?.output);
-      const primaryToolCall = toolCalls[0];
-
-      if (!primaryToolCall) {
+      let aiResponse = null;
+      try {
+        aiResponse = await runLLM(message);
+      } catch (err) {
         fallbackLogData = {
-          intent: 'none',
+          intent: 'llm_timeout',
           toolUsed: null,
           validation: 'skipped',
           finalCartDelta: [],
-          status: 'success',
-          error: null
+          status: 'error',
+          error: err && err.message ? err.message : 'llm_error'
         };
-      } else {
-        const toolConfig = TOOL_CONFIG[primaryToolCall.name];
-        if (!toolConfig) {
-          return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
-        }
+      }
 
-        const parsed = parseWith(toolConfig.schema, parseArgs(primaryToolCall.arguments));
-        if (!parsed.ok) {
+      if (aiResponse) {
+        const toolCalls = collectToolCalls(aiResponse?.output);
+        const primaryToolCall = toolCalls[0];
+
+        if (!primaryToolCall) {
+          fallbackLogData = {
+            intent: 'none',
+            toolUsed: null,
+            validation: 'skipped',
+            finalCartDelta: [],
+            status: 'success',
+            error: null
+          };
+        } else {
+          const toolConfig = TOOL_CONFIG[primaryToolCall.name];
+          if (!toolConfig) {
+            return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
+          }
+
+          const parsed = parseWith(toolConfig.schema, parseArgs(primaryToolCall.arguments));
+          if (!parsed.ok) {
+            logExecution({
+              intent: primaryToolCall.name,
+              toolUsed: primaryToolCall.name,
+              validation: 'invalid',
+              finalCartDelta: [],
+              executionTimeMs: Date.now() - startedAt,
+              status: 'error',
+              error: 'INVALID_TOOL_PAYLOAD'
+            });
+            return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
+          }
+
+          const execution = toolConfig.executor(parsed.data);
+          if (execution.ok === false && execution.error) {
+            logExecution({
+              intent: primaryToolCall.name,
+              toolUsed: primaryToolCall.name,
+              validation: 'invalid',
+              finalCartDelta: [],
+              executionTimeMs: Date.now() - startedAt,
+              status: 'error',
+              error: execution.error
+            });
+            return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
+          }
+
+          const validatedResponse = validateResponse(execution);
+
           logExecution({
             intent: primaryToolCall.name,
             toolUsed: primaryToolCall.name,
-            validation: 'invalid',
-            finalCartDelta: [],
+            validation: validatedResponse.ok ? 'valid' : 'invalid',
+            finalCartDelta: validatedResponse.cartUpdates,
             executionTimeMs: Date.now() - startedAt,
-            status: 'error',
-            error: 'INVALID_TOOL_PAYLOAD'
+            status: validatedResponse.ok ? 'success' : 'error',
+            error: validatedResponse.ok ? null : validatedResponse.reply
           });
-          return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
+
+          return jsonResponse(200, validatedResponse);
         }
-
-        const execution = toolConfig.executor(parsed.data);
-        if (execution.ok === false && execution.error) {
-          logExecution({
-            intent: primaryToolCall.name,
-            toolUsed: primaryToolCall.name,
-            validation: 'invalid',
-            finalCartDelta: [],
-            executionTimeMs: Date.now() - startedAt,
-            status: 'error',
-            error: execution.error
-          });
-          return jsonResponse(200, { ok: false, cartUpdates: [], error: 'INVALID_TOOL_PAYLOAD' });
-        }
-
-        const validatedResponse = validateResponse(execution);
-
-        logExecution({
-          intent: primaryToolCall.name,
-          toolUsed: primaryToolCall.name,
-          validation: validatedResponse.ok ? 'valid' : 'invalid',
-          finalCartDelta: validatedResponse.cartUpdates,
-          executionTimeMs: Date.now() - startedAt,
-          status: validatedResponse.ok ? 'success' : 'error',
-          error: validatedResponse.ok ? null : validatedResponse.reply
-        });
-
-        return jsonResponse(200, validatedResponse);
       }
     }
 
