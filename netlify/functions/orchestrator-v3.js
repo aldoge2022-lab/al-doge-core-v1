@@ -163,7 +163,7 @@ function detectRecommendationIntent(message, domain) {
     return false;
   }
 
-  const normalizedMessage = String(message || '');
+  const normalizedMessage = String(message);
   const hasPrimaryToken = PRIMARY_RECOMMENDATION_REGEX.test(normalizedMessage);
   const hasQuestionTone = normalizedMessage.includes('?');
 
@@ -457,7 +457,7 @@ function collectToolCalls(outputs) {
 }
 
 function withTimeout(promise, timeoutMs, errorMessage) {
-  let timer = null;
+  let timer;
   const timeoutPromise = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error(errorMessage || 'Operation timed out')), timeoutMs);
   });

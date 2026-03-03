@@ -33,8 +33,8 @@ function normalizeSuggestions(rawSuggestions) {
   return rawSuggestions
     .map((entry) => {
       if (typeof entry === 'string') {
-        const name = normalizeReply(entry);
-        return name ? { name } : null;
+        const stringName = normalizeReply(entry);
+        return stringName ? { name: stringName } : null;
       }
 
       if (entry && typeof entry === 'object') {
