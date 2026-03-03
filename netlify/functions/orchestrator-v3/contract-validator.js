@@ -3,6 +3,7 @@ const FALLBACK_RESPONSE = Object.freeze({
   cartUpdates: [],
   reply: 'Errore interno sistema ordine.'
 });
+const ALLOWED_MODES = new Set(['recommendation']);
 
 function isValidCartUpdate(item) {
   return Boolean(
@@ -105,7 +106,7 @@ function validateResponse(rawResponse) {
     delete validated.suggestions;
   }
 
-  if (mode) {
+  if (mode && ALLOWED_MODES.has(mode)) {
     validated.mode = mode;
   }
 

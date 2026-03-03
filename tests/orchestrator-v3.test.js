@@ -234,7 +234,7 @@ test('provides recommendations when no exact ingredients are valid', async () =>
   const { handler } = require('../netlify/functions/orchestrator-v3');
   const response = await handler({
     httpMethod: 'POST',
-    body: JSON.stringify({ message: 'pizza con pollo' })
+    body: JSON.stringify({ message: 'mi consigli una pizza con pollo?' })
   });
 
   assert.equal(response.statusCode, 200);

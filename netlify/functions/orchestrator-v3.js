@@ -26,6 +26,7 @@ const JSON_HEADERS = {
 
 const RECOMMENDATION_REGEX = /\b(consigli|qualcosa|leggera|piccante|vegetariana|senza|con)\b/i;
 const LLM_TIMEOUT_MS = 12000;
+const DEFAULT_RECOMMENDATION_SCORE = 1;
 
 function jsonResponse(statusCode, payload) {
   return {
@@ -152,7 +153,17 @@ function detectRecommendationIntent(message, domain) {
     return false;
   }
 
-  return RECOMMENDATION_REGEX.test(String(message));
+  const normalizedMessage = String(message || '');
+  const hasPrimaryToken = /\b(consigli|qualcosa|leggera|piccante|vegetariana)\b/i.test(
+    normalizedMessage
+  );
+  const hasQuestionTone = normalizedMessage.includes('?');
+
+  if (!RECOMMENDATION_REGEX.test(normalizedMessage)) {
+    return false;
+  }
+
+  return hasPrimaryToken || hasQuestionTone;
 }
 
 function normalizeCatalogIngredients(item) {
@@ -205,8 +216,11 @@ function buildRecommendationResponse(message) {
       reasonParts.push('Leggera con pochi ingredienti');
     }
 
-    if (score === 0 && (desiredIngredients.length === 0 || wantsPiccante || wantsVegetariana || wantsLeggera)) {
-      score = 1;
+    if (
+      score === 0 &&
+      (desiredIngredients.length === 0 || wantsPiccante || wantsVegetariana || wantsLeggera)
+    ) {
+      score = DEFAULT_RECOMMENDATION_SCORE;
     }
 
     const price = Number(item?.price_cents ?? item?.price ?? item?.base_price_cents ?? 0) || 0;
@@ -435,18 +449,12 @@ function collectToolCalls(outputs) {
 function withTimeout(promise, timeoutMs, errorMessage) {
   let timer = null;
   const timeoutPromise = new Promise((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(errorMessage || 'Operation timed out')),
-      timeoutMs
-    );
+    timer = setTimeout(() => reject(new Error(errorMessage || 'Operation timed out')), timeoutMs);
   });
 
-  return Promise.race([
-    Promise.resolve(promise).finally(() => {
-      clearTimeout(timer);
-    }),
-    timeoutPromise
-  ]);
+  return Promise.race([Promise.resolve(promise), timeoutPromise]).finally(() => {
+    clearTimeout(timer);
+  });
 }
 
 async function runLLM(prompt) {
