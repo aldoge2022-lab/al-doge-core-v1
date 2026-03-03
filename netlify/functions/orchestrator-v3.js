@@ -436,7 +436,12 @@ function withTimeout(promise, timeoutMs, errorMessage) {
   let timer = null;
   const timeoutPromise = new Promise((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error(errorMessage || 'Operation timed out')),
+      () => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+        reject(new Error(errorMessage || 'Operation timed out'));
+      },
       timeoutMs
     );
   });
