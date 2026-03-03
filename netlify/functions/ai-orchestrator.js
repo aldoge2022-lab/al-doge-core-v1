@@ -1,40 +1,65 @@
-const { buildPanino } = require('../../core/panino');
-const { getIngredients } = require('../../core/menu/food-engine');
+const OpenAI = require('openai');
+const { validateResponse, FALLBACK_RESPONSE } = require('./orchestrator-v3/contract-validator');
+const { routeDomain } = require('./orchestrator-v3/domain-router');
+const { handleMenu, findPizza, parseQty } = require('./orchestrator-v3/menu-handler');
+const { handlePanino } = require('./orchestrator-v3/panino-handler');
+const { logExecution } = require('./orchestrator-v3/logger');
+const {
+  AddItemSchema,
+  RemoveItemSchema,
+  CreateCustomItemSchema,
+  SuggestItemsSchema,
+  parseWith,
+  toToolParameters,
+  normalizeIngredientId
+} = require('./orchestrator-v3/schemas/orderSchemas');
+const { buildOrderItem, CATALOG_ITEMS } = require('./orchestrator-v3/services/orderBuilder');
+const { extractValidIngredients } = require('./orchestrator-v3/services/ingredientExtractor');
+const { findBestMatches } = require('./orchestrator-v3/services/ingredientMatchEngine');
 
-const MAX_TOOL_CALLS = 3;
-const VEG_KEYWORDS = ['veg', 'vegetar', 'verdur', 'orto'];
-const DESSERT_KEYWORDS = ['dessert', 'dolce', 'tiramisu', 'gelato', 'panna', 'nutella'];
-const DRINK_KEYWORDS = ['drink', 'bevanda', 'acqua', 'birra', 'cola', 'spritz', 'vino', 'bibita'];
-const PROTEIN_KEYWORDS = ['salame', 'prosciutto', 'salsic', 'pollo', 'tonno', 'wurstel', 'bacon', 'carne'];
-const DIRECT_ADD_KEYWORDS = ['aggiungi', 'metti nel carrello', 'ordina'];
+const JSON_HEADERS = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type'
+};
+
+const PRIMARY_RECOMMENDATION_TOKENS = ['consigli', 'qualcosa', 'leggera', 'piccante', 'vegetariana'];
+const SECONDARY_RECOMMENDATION_TOKENS = [...PRIMARY_RECOMMENDATION_TOKENS, 'senza', 'con'];
+const PRIMARY_RECOMMENDATION_REGEX = new RegExp(
+  `\\b(${PRIMARY_RECOMMENDATION_TOKENS.join('|')})\\b`,
+  'i'
+);
+const RECOMMENDATION_REGEX = new RegExp(
+  `\\b(${SECONDARY_RECOMMENDATION_TOKENS.join('|')})\\b`,
+  'i'
+);
+const PICCANTE_TOKEN = 'piccante';
+const LLM_TIMEOUT_MS = 12000;
+const DEFAULT_RECOMMENDATION_SCORE = 1;
 
 function jsonResponse(statusCode, payload) {
   return {
     statusCode,
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify(payload)
   };
 }
 
-function tryParseJson(body) {
+function parseBody(body) {
+  if (!body) {
+    return {};
+  }
+
+  if (typeof body === 'object') {
+    return body;
+  }
+
   try {
     return JSON.parse(body);
   } catch {
-    return {};
+    return null;
   }
-}
-
-function normalizeClientPayload(payload) {
-  const message = typeof payload?.message === 'string'
-    ? payload.message
-    : (typeof payload?.reply === 'string' ? payload.reply : '');
-
-  return {
-    ...payload,
-    cartUpdates: Array.isArray(payload?.cartUpdates) ? payload.cartUpdates : [],
-    message,
-    result: message
-  };
 }
 
 function parseArgs(args) {
@@ -49,612 +74,733 @@ function parseArgs(args) {
   return args;
 }
 
-function flattenCatalog(catalog) {
-  const sections = [catalog?.menu, catalog?.pizzas, catalog?.drinks, catalog?.desserts, catalog?.extras];
-  const items = sections
-    .filter(Array.isArray)
-    .flat()
-    .filter(Boolean);
-
-  const seen = new Set();
-  return items.filter((item) => {
-    const itemId = String(item?.id || '');
-    if (!itemId || seen.has(itemId)) return false;
-    seen.add(itemId);
-    return true;
-  });
-}
-
-function normalizeCartLine(line) {
-  const menuItemId = String(line?.menuItemId || line?.itemId || line?.id || line?.productId || '');
-  const qty = Math.max(1, Number(line?.qty || line?.quantity) || 1);
-  if (!menuItemId) return null;
-  return { menuItemId, qty };
-}
-
-function findCategory(item) {
-  const type = String(item?.type || '').toLowerCase();
-  const tags = [...(Array.isArray(item?.tags) ? item.tags : []), ...(Array.isArray(item?.tag) ? item.tag : [])]
-    .map((value) => String(value || '').toLowerCase());
-  const joined = `${type} ${tags.join(' ')} ${String(item?.name || '').toLowerCase()}`;
-
-  if (DESSERT_KEYWORDS.some((token) => joined.includes(token))) return 'dessert';
-  if (DRINK_KEYWORDS.some((token) => joined.includes(token))) return 'drink';
-  if (type === 'pizza') return 'pizza';
-  return 'other';
-}
-
-function isVegItem(item) {
-  const tags = [...(Array.isArray(item?.tags) ? item.tags : []), ...(Array.isArray(item?.tag) ? item.tag : [])]
-    .map((value) => String(value || '').toLowerCase());
-  if (tags.some((value) => VEG_KEYWORDS.some((token) => value.includes(token)))) {
-    return true;
-  }
-
-  const ingredients = [...(Array.isArray(item?.ingredients) ? item.ingredients : []), ...(Array.isArray(item?.ingredienti) ? item.ingredienti : [])]
-    .map((value) => String(value || '').toLowerCase());
-  if (ingredients.length === 0) return false;
-  return !ingredients.some((ingredient) => PROTEIN_KEYWORDS.some((token) => ingredient.includes(token)));
-}
-
-function detectProfile({ hasDrink, hasDessert, vegOnly, premiumCount, itemCount }) {
-  if (vegOnly && itemCount > 0) return 'veg-focused';
-  if (premiumCount >= 2) return 'premium';
-  if (hasDrink && hasDessert) return 'full-meal';
-  if (!hasDrink && itemCount >= 2) return 'thirsty';
-  if (!hasDessert && itemCount >= 2) return 'sweet-tooth';
-  return 'standard';
-}
-
-function analyzeCart(cart, catalog) {
-  const catalogItems = flattenCatalog(catalog);
-  const byId = new Map(catalogItems.map((item) => [String(item.id), item]));
-  const normalizedCart = (Array.isArray(cart) ? cart : []).map(normalizeCartLine).filter(Boolean);
-
-  let total = 0;
-  let itemCount = 0;
-  let hasDrink = false;
-  let hasDessert = false;
-  let vegOnly = normalizedCart.length > 0;
-  let premiumCount = 0;
-
-  for (const line of normalizedCart) {
-    const item = byId.get(line.menuItemId);
-    const category = findCategory(item || {});
-    const unitPrice = Number(item?.price_cents ?? item?.price ?? 0) || 0;
-    const tags = [...(Array.isArray(item?.tags) ? item.tags : []), ...(Array.isArray(item?.tag) ? item.tag : [])]
-      .map((value) => String(value || '').toLowerCase());
-
-    total += unitPrice * line.qty;
-    itemCount += line.qty;
-    if (category === 'drink') hasDrink = true;
-    if (category === 'dessert') hasDessert = true;
-    if (!isVegItem(item || {})) vegOnly = false;
-    if (tags.includes('premium') || unitPrice >= 900) premiumCount += line.qty;
-  }
-
-  return {
-    total,
-    itemCount,
-    hasDrink,
-    hasDessert,
-    vegOnly,
-    premiumCount,
-    profile: detectProfile({ hasDrink, hasDessert, vegOnly, premiumCount, itemCount })
-  };
-}
-
-function cartCompatibility(cartAnalysis, candidateCategory) {
-  if (candidateCategory === 'drink' && !cartAnalysis.hasDrink) return 1.2;
-  if (candidateCategory === 'dessert' && !cartAnalysis.hasDessert) return 1.2;
-  if (candidateCategory === 'pizza' && cartAnalysis.itemCount < 2) return 1.1;
-  return 0.9;
-}
-
-function profileBoost(cartAnalysis, candidateCategory, candidateTags) {
-  const isPremium = candidateTags.includes('premium');
-  if (cartAnalysis.profile === 'premium' && isPremium) return 1.25;
-  if (cartAnalysis.profile === 'veg-focused' && candidateTags.some((tag) => VEG_KEYWORDS.some((token) => tag.includes(token)))) return 1.2;
-  if (cartAnalysis.profile === 'thirsty' && candidateCategory === 'drink') return 1.25;
-  if (cartAnalysis.profile === 'sweet-tooth' && candidateCategory === 'dessert') return 1.25;
-  return 1;
-}
-
-function aggressionLevel(cartAnalysis) {
-  if (cartAnalysis.itemCount <= 1) return 4;
-  if (!cartAnalysis.hasDrink || !cartAnalysis.hasDessert) return 3;
-  if (cartAnalysis.total >= 1800 || cartAnalysis.premiumCount >= 2) return 2;
-  return 1;
-}
-
-function decideUpsell(cartAnalysis, catalog, cart = []) {
-  const catalogItems = flattenCatalog(catalog);
-  const cartIds = new Set(
-    (Array.isArray(cart) ? cart : [])
-      .map(normalizeCartLine)
-      .filter(Boolean)
-      .map((line) => line.menuItemId)
-  );
-
-  const candidates = catalogItems
-    .filter((item) => !cartIds.has(String(item.id)))
-    .map((item) => {
-      const price = Number(item?.price_cents ?? item?.price ?? 0) || 0;
-      const category = findCategory(item);
-      const tags = [...(Array.isArray(item?.tags) ? item.tags : []), ...(Array.isArray(item?.tag) ? item.tag : [])]
-        .map((value) => String(value || '').toLowerCase());
-
-      const marginScore = Math.max(0.5, Math.min(2, price / 500));
-      const categoryWeight = category === 'drink' || category === 'dessert' ? 1.25 : 1;
-      const tagWeight = tags.includes('premium') ? 1.15 : 1;
-      const boost = profileBoost(cartAnalysis, category, tags);
-      const compatibility = cartCompatibility(cartAnalysis, category);
-      const score = marginScore * categoryWeight * tagWeight * boost * compatibility;
-
-      return {
-        id: String(item.id),
-        name: item.name,
-        category,
-        tags,
-        price,
-        marginScore,
-        profileBoost: boost,
-        cartCompatibility: compatibility,
-        score
-      };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  return candidates[0] || null;
-}
-
-async function createOpenAIClient() {
-  const OpenAI = require('openai');
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
-
-async function loadMenu() {
-  return require('../../data/catalog');
-}
-
-async function loadIngredients() {
-  return getIngredients();
-}
-
-function toCartUpdate(toolName, output) {
-  if (toolName !== 'add_menu_item_to_cart') return null;
-
-  return {
-    type: 'add',
-    menuItemId: String(output.itemId),
-    qty: Math.max(1, Number(output.qty) || 1)
-  };
-}
-
-// ===============================
-// MENU KNOWLEDGE TOOLS (V3.5)
-// ===============================
-
-async function loadMenuSafe() {
-  const catalog = await loadMenu();
-  return flattenCatalog(catalog);
-}
-
-function normalizeText(str) {
-  return String(str || '').toLowerCase();
-}
-
-async function searchMenuItems(query) {
-  const items = await loadMenuSafe();
-  const q = normalizeText(query);
-
-  return items
-    .filter(item => {
-      const name = normalizeText(item.name);
-      const ingredients = [
-        ...(Array.isArray(item.ingredients) ? item.ingredients : []),
-        ...(Array.isArray(item.ingredienti) ? item.ingredienti : [])
-      ].map(normalizeText);
-
-      return (
-        name.includes(q) ||
-        ingredients.some(i => i.includes(q))
-      );
-    })
-    .slice(0, 5)
-    .map(item => ({
-      id: String(item.id),
-      name: item.name,
-      ingredients: item.ingredients || item.ingredienti || [],
-      price: item.price_cents ?? item.price ?? 0
-    }));
-}
-
-async function getMenuItemDetails(itemId) {
-  const items = await loadMenuSafe();
-  const item = items.find(i => String(i.id) === String(itemId));
-
-  if (!item) return null;
-
-  return {
-    id: String(item.id),
-    name: item.name,
-    ingredients: item.ingredients || item.ingredienti || [],
-    price: item.price_cents ?? item.price ?? 0,
-    tags: item.tags || []
-  };
-}
-
-async function runToolCall(toolCall, { cart, validIngredientIds }) {
-  const args = parseArgs(toolCall.arguments);
-
-  if (toolCall.name === 'create_custom_panino') {
-    const ingredientIds = Array.isArray(args.ingredientIds) ? args.ingredientIds : [];
-    if (!ingredientIds.every((id) => validIngredientIds.includes(id))) {
-      throw new Error('Invalid ingredient from model');
-    }
-    const result = buildPanino(ingredientIds);
-    if (!result.ok) {
-      throw new Error(result.error || 'Invalid ingredientIds');
-    }
-    return result;
-  }
-
-  if (toolCall.name === 'add_menu_item_to_cart') {
-    return {
-      itemId: String(args.itemId),
-      qty: Number(args.qty) || 1
-    };
-  }
-
-  if (toolCall.name === 'proceed_to_checkout') {
-    const { handler } = require('./create-checkout');
-    const checkoutResponse = await handler({
-      httpMethod: 'POST',
-      body: JSON.stringify({ cart })
-    });
-    return tryParseJson(checkoutResponse?.body || '{}');
-  }
-
-  if (toolCall.name === 'suggest_pairing') {
-    return { ok: true };
-  }
-
-  if (toolCall.name === 'search_menu_items') {
-    const results = await searchMenuItems(args.query);
-    return { results };
-  }
-
-  if (toolCall.name === 'get_menu_item_details') {
-    const details = await getMenuItemDetails(args.itemId);
-    return { details };
-  }
-
-  return {};
-}
-
-function mapAiErrorMessage(status) {
-  if (status === 401) return 'Errore configurazione AI (chiave non valida).';
-  if (status === 429) return 'Servizio AI momentaneamente sovraccarico.';
-  return 'Errore AI temporaneo.';
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function promptContainsExactItemName(prompt, itemName) {
-  const normalizedName = String(itemName || '').trim();
-  if (!normalizedName) return false;
-
-  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(normalizedName)}([^\\p{L}\\p{N}]|$)`, 'iu');
-  return pattern.test(prompt);
-}
-
-function findDeterministicAddMatch(prompt, catalog) {
-  const normalizedPrompt = String(prompt || '').toLowerCase();
-  if (!DIRECT_ADD_KEYWORDS.some((keyword) => normalizedPrompt.includes(keyword))) {
+function buildCustomPizzaFromIngredients({ ingredients, message }) {
+  const baseItem = CATALOG_ITEMS.get('margherita') || Array.from(CATALOG_ITEMS.values())[0];
+  if (!baseItem) {
     return null;
   }
 
-  const catalogItems = flattenCatalog(catalog);
-  return catalogItems.find((item) => promptContainsExactItemName(prompt, item?.name)) || null;
-}
+  const normalizedMessage = String(message || '').toLowerCase();
+  const includeTomatoBase = !normalizedMessage.includes('bianca');
+  const desiredIngredients = new Set(
+    (ingredients || []).map((ingredient) => normalizeIngredientId(ingredient)).filter(Boolean)
+  );
 
-function buildUpsellSuggestion(cartAnalysis, upsellCandidate) {
-  if (upsellCandidate) {
-    return {
-      engine: 'revenue-engine-v1',
-      aggressionLevel: aggressionLevel(cartAnalysis),
-      profile: cartAnalysis.profile,
-      cartAnalysis,
-      suggestion: {
-        itemId: upsellCandidate.id,
-        name: upsellCandidate.name,
-        category: upsellCandidate.category,
-        tags: upsellCandidate.tags,
-        price: upsellCandidate.price,
-        marginScore: Number(upsellCandidate.marginScore.toFixed(3)),
-        profileBoost: Number(upsellCandidate.profileBoost.toFixed(3)),
-        cartCompatibility: Number(upsellCandidate.cartCompatibility.toFixed(3)),
-        score: Number(upsellCandidate.score.toFixed(3))
-      }
-    };
+  if (includeTomatoBase) {
+    desiredIngredients.add('pomodoro');
+  } else {
+    desiredIngredients.delete('pomodoro');
   }
 
+  const baseIngredients = [
+    ...(Array.isArray(baseItem.ingredients) ? baseItem.ingredients : []),
+    ...(Array.isArray(baseItem.ingredienti) ? baseItem.ingredienti : [])
+  ]
+    .map(normalizeIngredientId)
+    .filter(Boolean);
+
+  const removedIngredients = baseIngredients.filter((ingredient) => !desiredIngredients.has(ingredient));
+  const extraIngredients = Array.from(desiredIngredients).filter(
+    (ingredient) => !baseIngredients.includes(ingredient)
+  );
+
+  const orderItem = buildOrderItem({
+    baseItem,
+    extraIngredients,
+    removedIngredients,
+    quantity: 1
+  });
+
+  const ingredientList = orderItem.ingredients.join(', ');
   return {
-    engine: 'revenue-engine-v1',
-    aggressionLevel: aggressionLevel(cartAnalysis),
-    profile: cartAnalysis.profile,
-    cartAnalysis,
-    suggestion: null
+    ok: true,
+    cartUpdates: [orderItem],
+    reply: `Ho creato una pizza personalizzata con ${ingredientList}.`
   };
 }
 
-exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') {
-    return jsonResponse(405, normalizeClientPayload({
-      cartUpdates: [],
-      message: 'Metodo non consentito'
-    }));
+function runDeterministicIngredientMatch(message) {
+  const ingredients = extractValidIngredients(message);
+  if (ingredients.length === 0) {
+    return null;
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return jsonResponse(200, normalizeClientPayload({
-      cartUpdates: [],
-      message: 'Chiave OpenAI non configurata.'
-    }));
-  }
+  const matches = findBestMatches(ingredients, Array.from(CATALOG_ITEMS.values()));
 
-  const body = tryParseJson(event.body);
-  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-  const cart = Array.isArray(body.cart) ? body.cart : [];
-
-  if (!prompt) {
-    return jsonResponse(400, normalizeClientPayload({
-      cartUpdates: [],
-      message: 'Prompt mancante'
-    }));
-  }
-
-  const cartUpdates = [];
-  const toolsCalled = [];
-  const finalActions = [];
-
-  try {
-    const catalog = await loadMenu();
-    const deterministicMatch = findDeterministicAddMatch(prompt, catalog);
-
-    if (deterministicMatch) {
-      const toolCall = {
-        name: 'add_menu_item_to_cart',
-        arguments: JSON.stringify({ itemId: String(deterministicMatch.id), qty: 1 })
-      };
-      const output = await runToolCall(toolCall, { cart, validIngredientIds: [] });
-      const cartUpdate = toCartUpdate(toolCall.name, output);
-      if (cartUpdate) cartUpdates.push(cartUpdate);
-      toolsCalled.push(toolCall.name);
-      finalActions.push({ tool: toolCall.name, ok: true });
-
-      const projectedCart = [...cart, ...cartUpdates.map((update) => ({ menuItemId: update.menuItemId, qty: update.qty }))];
-      const cartAnalysis = analyzeCart(projectedCart, catalog);
-      const upsellCandidate = decideUpsell(cartAnalysis, catalog, projectedCart);
-      const upsellSuggestion = buildUpsellSuggestion(cartAnalysis, upsellCandidate);
-      const assistantReply = `Perfetto! Ho aggiunto ${deterministicMatch.name} al carrello.`;
-
-      return jsonResponse(200, normalizeClientPayload({
-        ok: true,
-        reply: assistantReply,
-        toolsCalled,
-        finalActions,
-        cartUpdates,
-        upsellSuggestion,
-        message: assistantReply
-      }));
-    }
-
-    const client = await createOpenAIClient();
-    const ingredients = await loadIngredients();
-    const ingredientList = ingredients
-      .map((i) => `${i.id}: ${i.name}`)
-      .join('\n');
-    const validIngredientIds = ingredients.map((i) => i.id);
-
-    const tools = [
-      {
-        type: 'function',
-        name: 'create_custom_panino',
-        description: 'Crea un panino personalizzato con ingredienti validi.',
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            ingredientIds: {
-              type: 'array',
-              items: { type: 'string' }
-            },
-            impasto: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-            mozzarella: { anyOf: [{ type: 'string' }, { type: 'null' }] }
-          },
-          required: ['ingredientIds']
-        }
-      },
-      {
-        type: 'function',
-        name: 'search_menu_items',
-        description: 'Cerca elementi del menu per nome o ingrediente.',
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            query: { type: 'string' }
-          },
-          required: ['query']
-        }
-      },
-      {
-        type: 'function',
-        name: 'get_menu_item_details',
-        description: 'Restituisce dettagli completi di un elemento del menu.',
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            itemId: { type: 'string' }
-          },
-          required: ['itemId']
-        }
-      },
-      {
-        type: 'function',
-        name: 'add_menu_item_to_cart',
-        description: 'Aggiunge un elemento del menu al carrello.',
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            itemId: { type: 'string' },
-            qty: { type: 'number' }
-          },
-          required: ['itemId']
-        }
-      },
-      {
-        type: 'function',
-        name: 'suggest_pairing',
-        description: 'Suggerisce un abbinamento per un elemento del menu.',
-        parameters: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            itemId: { type: 'string' }
-          },
-          required: ['itemId']
-        }
-      }
-    ];
-
-    const input = [
-      {
-        role: 'system',
-        content: `
-Sei l'orchestrator ufficiale di AL DOGE.
-
-Puoi:
-- Aggiungere pizze esistenti usando add_menu_item_to_cart
-- Creare pizze personalizzate usando create_custom_panino
-Hai accesso a strumenti per leggere il menu reale.
-Quando l’utente chiede ingredienti, prezzo o dettagli di un prodotto,
-DEVI usare get_menu_item_details.
-
-Regole obbligatorie:
-- Usa SOLO ingredienti presenti in questo elenco:
-
-${ingredientList}
-
-- Non inventare ingredienti.
-- Non inventare pizze predefinite.
-- Se l’utente chiede “con verdure”, seleziona ingredienti vegetali presenti.
-- Se personalizzi, devi usare create_custom_panino.
-- Non rispondere solo con testo quando puoi usare un tool.
-- Non cambiare prodotto se l’utente chiede dettagli.
-`
-      },
-      { role: 'user', content: prompt }
-    ];
-
-    let response = await client.responses.create({
-      model: 'gpt-4o-mini-2024-07-18',
-      input,
-      tools,
-      tool_choice: 'auto'
+  if (matches.identical) {
+    const orderItem = buildOrderItem({
+      baseItem: matches.identical,
+      extraIngredients: [],
+      removedIngredients: [],
+      quantity: 1
     });
 
-    let assistantMessage = null;
+    return {
+      ok: true,
+      cartUpdates: [orderItem],
+      reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
+    };
+  }
 
-    while (toolsCalled.length < MAX_TOOL_CALLS) {
-      const outputs = Array.isArray(response?.output) ? response.output : [];
-      let toolCalls = [];
-      let messageItem = null;
+  if (Array.isArray(matches.similar) && matches.similar.length > 0) {
+    return {
+      ok: true,
+      cartUpdates: [],
+      reply: 'Non esiste esattamente questa combinazione. Ti propongo:',
+      suggestions: matches.similar.map((pizza) => pizza.name || pizza.id).filter(Boolean)
+    };
+  }
 
-      toolCalls.push(...outputs.filter((output) => output.type === 'tool_call'));
+  return buildCustomPizzaFromIngredients({ ingredients, message });
+}
 
-      for (const item of outputs) {
-        if (item.type === 'message') {
-          messageItem = item;
-          if (Array.isArray(item.content)) {
-            const nestedCalls = item.content.filter((contentItem) => contentItem.type === 'tool_call');
-            toolCalls.push(...nestedCalls);
-          }
-        }
-      }
+function detectRecommendationIntent(message, domain) {
+  if (!message) {
+    return false;
+  }
 
-      if (toolCalls.length > 0) {
-        for (const toolCall of toolCalls) {
-          const callId =
-            toolCall?.call_id ||
-            toolCall?.id ||
-            toolCall?.tool_call_id;
+  if (domain && domain !== 'MENU') {
+    return false;
+  }
 
-          if (!callId) {
-            console.error('[ai-orchestrator] missing tool call identifier', { toolCall });
-            throw new Error(`Missing tool call identifier for tool ${toolCall?.name || 'unknown'}`);
-          }
+  const normalizedMessage = String(message);
+  const hasPrimaryToken = PRIMARY_RECOMMENDATION_REGEX.test(normalizedMessage);
+  const hasQuestionTone = normalizedMessage.includes('?');
 
-          const output = await runToolCall(toolCall, { cart, validIngredientIds });
+  if (!RECOMMENDATION_REGEX.test(normalizedMessage)) {
+    return false;
+  }
 
-          toolsCalled.push(toolCall.name);
-          finalActions.push({ tool: toolCall.name, ok: true });
+  return hasPrimaryToken || hasQuestionTone;
+}
 
-          const cartUpdate = toCartUpdate(toolCall.name, output);
-          if (cartUpdate) cartUpdates.push(cartUpdate);
+function normalizeCatalogIngredients(item) {
+  return [
+    ...(Array.isArray(item?.ingredients) ? item.ingredients : []),
+    ...(Array.isArray(item?.ingredienti) ? item.ingredienti : [])
+  ]
+    .map(normalizeIngredientId)
+    .filter(Boolean);
+}
 
-          const projectedCart = [...cart, ...cartUpdates.map((update) => ({ menuItemId: update.menuItemId, qty: update.qty }))];
-          const cartAnalysis = analyzeCart(projectedCart, catalog);
-          const upsellCandidate = decideUpsell(cartAnalysis, catalog, projectedCart);
-          const upsellSuggestion = buildUpsellSuggestion(cartAnalysis, upsellCandidate);
+function buildRecommendationResponse(message) {
+  const normalizedMessage = String(message || '').toLowerCase();
+  const wantsPiccante = normalizedMessage.includes(PICCANTE_TOKEN);
+  const wantsVegetariana = normalizedMessage.includes('vegetar');
+  const wantsLeggera = normalizedMessage.includes('legger');
+  const desiredIngredients = extractValidIngredients(message);
+  const catalogItems = Array.from(CATALOG_ITEMS.values());
 
-          const enrichedToolOutput = toolCall.name === 'add_menu_item_to_cart'
-            ? { ...output, upsellSuggestion }
-            : output;
+  if (catalogItems.length === 0) {
+    return null;
+  }
 
-          response = await client.responses.create({
-            model: 'gpt-4o-mini-2024-07-18',
-            previous_response_id: response.id,
-            input: [{
-              type: 'function_call_output',
-              call_id: callId,
-              output: JSON.stringify(enrichedToolOutput)
-            }]
-          });
-        }
+  const scored = catalogItems.map((item) => {
+    const ingredients = normalizeCatalogIngredients(item);
+    const tags = Array.isArray(item?.tags) ? item.tags.map((tag) => String(tag).toLowerCase()) : [];
+    const ingredientMatches = desiredIngredients.filter((ingredient) => ingredients.includes(ingredient));
 
-        continue;
-      }
+    let score = ingredientMatches.length * 2;
+    const reasonParts = [];
 
-      if (messageItem) {
-        assistantMessage = messageItem.content?.[0]?.text || null;
-      }
-
-      break;
+    if (ingredientMatches.length > 0) {
+      reasonParts.push(`Contiene ${ingredientMatches.join(', ')}`);
     }
 
-    const assistantReply = assistantMessage || response?.output_text || 'Posso aiutarti a scegliere qualcosa dal menu.';
+    const hasPiccante =
+      tags.some((tag) => tag.includes(PICCANTE_TOKEN)) ||
+      ingredients.some((id) => id.includes(PICCANTE_TOKEN));
+    if (wantsPiccante && hasPiccante) {
+      score += 3;
+      reasonParts.push('Nota piccante');
+    }
 
-    return jsonResponse(200, normalizeClientPayload({
+    const hasVegetariana = tags.some((tag) => tag.includes('vegetar'));
+    if (wantsVegetariana && hasVegetariana) {
+      score += 3;
+      reasonParts.push('Opzione vegetariana');
+    }
+
+    if (wantsLeggera && ingredients.length <= 3) {
+      score += 2;
+      reasonParts.push('Leggera con pochi ingredienti');
+    }
+
+    if (
+      score === 0 &&
+      (desiredIngredients.length === 0 || wantsPiccante || wantsVegetariana || wantsLeggera)
+    ) {
+      score = DEFAULT_RECOMMENDATION_SCORE;
+    }
+
+    const price = Number(item?.price_cents ?? item?.price ?? item?.base_price_cents ?? 0) || 0;
+
+    return {
+      item,
+      score,
+      reason: reasonParts.join('. ') || 'Scelta dal menu',
+      price
+    };
+  });
+
+  const scoredWithPositive = scored.filter((entry) => entry.score > 0);
+  const candidates = scoredWithPositive.length > 0 ? scoredWithPositive : scored;
+
+  const top = candidates
+    .sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return a.price - b.price;
+    })
+    .slice(0, 3);
+
+  if (top.length === 0) {
+    return null;
+  }
+
+  const suggestions = top.map(({ item, reason }) => ({
+    id: String(item.id),
+    name: String(item.name || item.id),
+    reason: reason || 'Scelta dal menu'
+  }));
+
+  const names = suggestions.map((suggestion) => suggestion.name);
+  const replyPrompt =
+    suggestions.length > 1 ? 'Vuoi aggiungerle al carrello?' : 'Vuoi aggiungerla al carrello?';
+  const reply = `Ti consiglio ${names.join(' oppure ')}. ${replyPrompt}`;
+
+  return {
+    ok: true,
+    mode: 'recommendation',
+    cartUpdates: [],
+    suggestions,
+    reply
+  };
+}
+
+function runExactNameMatch(message, domain) {
+  if (domain && domain !== 'MENU') {
+    return null;
+  }
+
+  const pizza = findPizza(message);
+  if (!pizza) {
+    return null;
+  }
+
+  const qty = parseQty(message);
+  const baseItem = CATALOG_ITEMS.get(String(pizza.id)) || pizza;
+
+  try {
+    const orderItem = buildOrderItem({
+      baseItem,
+      extraIngredients: [],
+      removedIngredients: [],
+      quantity: qty
+    });
+
+    return {
       ok: true,
-      reply: assistantReply,
-      toolsCalled,
-      finalActions,
-      cartUpdates,
-      message: assistantReply
-    }));
-  } catch (error) {
-    console.error('AI FULL ERROR:', error);
+      cartUpdates: [orderItem],
+      reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
+    };
+  } catch {
+    return null;
+  }
+}
 
-    return jsonResponse(200, normalizeClientPayload({
+function runDirectMatch(message) {
+  const { domain, intent } = routeDomain(message);
+
+  if (domain === 'MENU') {
+    const directMenuResponse = handleMenu({ message, intent });
+    if (directMenuResponse?.ok && directMenuResponse.cartUpdates?.length) {
+      return directMenuResponse;
+    }
+  }
+
+  if (domain === 'PANINO') {
+    const directPaninoResponse = handlePanino({ message, intent });
+    if (directPaninoResponse?.ok && directPaninoResponse.cartUpdates?.length) {
+      return directPaninoResponse;
+    }
+  }
+
+  return null;
+}
+
+const TOOL_CONFIG = {
+  add_item: {
+    schema: AddItemSchema,
+    parameters: toToolParameters('add'),
+    executor: (data) => {
+      const baseItem = CATALOG_ITEMS.get(String(data.itemId));
+      if (!baseItem) {
+        return { ok: false, error: 'INVALID_TOOL_PAYLOAD' };
+      }
+
+      let orderItem;
+      try {
+        orderItem = buildOrderItem({
+          baseItem,
+          extraIngredients: data.extraIngredients || [],
+          removedIngredients: data.removedIngredients || [],
+          quantity: data.quantity
+        });
+      } catch {
+        return { ok: false, error: 'INVALID_TOOL_PAYLOAD' };
+      }
+
+      return {
+        ok: true,
+        cartUpdates: [orderItem],
+        reply: `${orderItem.name} aggiunta al carrello (${orderItem.qty}x).`
+      };
+    }
+  },
+  remove_item: {
+    schema: RemoveItemSchema,
+    parameters: toToolParameters('remove'),
+    executor: (data) => {
+      if (!CATALOG_ITEMS.has(String(data.itemId))) {
+        return { ok: false, error: 'INVALID_TOOL_PAYLOAD' };
+      }
+
+      return {
+        ok: true,
+        cartUpdates: [
+          {
+            type: 'REMOVE_ITEM',
+            id: String(data.itemId),
+            qty: data.quantity
+          }
+        ],
+        reply: `Rimosso ${data.quantity}x ${data.itemId} dal carrello.`
+      };
+    }
+  },
+  create_custom_item: {
+    schema: CreateCustomItemSchema,
+    parameters: toToolParameters('custom'),
+    executor: (data) => {
+      const baseItem = CATALOG_ITEMS.get(String(data.baseItemId));
+      if (!baseItem) {
+        return { ok: false, error: 'INVALID_TOOL_PAYLOAD' };
+      }
+
+      let orderItem;
+      try {
+        orderItem = buildOrderItem({
+          baseItem,
+          extraIngredients: data.extraIngredients || [],
+          removedIngredients: data.removedIngredients || [],
+          quantity: data.quantity
+        });
+      } catch {
+        return { ok: false, error: 'INVALID_TOOL_PAYLOAD' };
+      }
+
+      return {
+        ok: true,
+        cartUpdates: [orderItem],
+        reply: `Creato articolo personalizzato (${orderItem.qty}x ${orderItem.name}).`
+      };
+    }
+  },
+  suggest_items: {
+    schema: SuggestItemsSchema,
+    parameters: toToolParameters('suggest'),
+    executor: (data) => {
+      const items = Array.from(CATALOG_ITEMS.values()).slice(0, data.limit || 3);
+      const reply =
+        items.length === 0
+          ? 'Catalogo non disponibile.'
+          : `Posso proporre: ${items.map((item) => item.name).join(', ')}.`;
+
+      return {
+        ok: true,
+        cartUpdates: [],
+        reply
+      };
+    }
+  }
+};
+
+const TOOL_DEFINITIONS = Object.entries(TOOL_CONFIG).map(([name, config]) => ({
+  type: 'function',
+  name,
+  description: 'Usa il tool per modificare il carrello in modo strutturato.',
+  parameters: config.parameters
+}));
+
+function collectToolCalls(outputs) {
+  if (!Array.isArray(outputs)) return [];
+  const toolCalls = [];
+
+  outputs.forEach((output) => {
+    if (output?.type === 'tool_call') {
+      toolCalls.push(output);
+      return;
+    }
+
+    if (output?.type === 'message' && Array.isArray(output.content)) {
+      output.content.forEach((part) => {
+        if (part?.type === 'tool_call') {
+          toolCalls.push(part);
+        }
+      });
+    }
+  });
+
+  return toolCalls;
+}
+
+function withTimeout(promise, timeoutMs, errorMessage) {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(errorMessage || 'Operation timed out')), timeoutMs);
+  });
+
+  return Promise.race([Promise.resolve(promise), timeoutPromise]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+async function runLLM(prompt) {
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const aiCall = client.responses.create({
+    model: 'gpt-4o-mini-2024-07-18',
+    input: [
+      {
+        role: 'system',
+        content:
+          'Sei un orchestratore ordini. Rispondi SOLO usando tool_call obbligatorio. Non restituire mai testo libero. Non generare prezzi.'
+      },
+      { role: 'user', content: prompt }
+    ],
+    tools: TOOL_DEFINITIONS,
+    tool_choice: 'auto'
+  });
+
+  return withTimeout(aiCall, LLM_TIMEOUT_MS, 'llm_timeout');
+}
+
+function isHealthRequest(event) {
+  const path = String(event.path || event.rawUrl || '').toLowerCase();
+  // Accept legacy orchestrator-v3 health path for backward compatibility during migration.
+  // TODO: drop orchestrator-v3/health alias once all clients use ai-orchestrator/health.
+  return path.includes('ai-orchestrator/health') || path.includes('orchestrator-v3/health');
+}
+
+exports.handler = async (event) => {
+  const startedAt = Date.now();
+
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers: JSON_HEADERS,
+      body: ''
+    };
+  }
+
+  if (isHealthRequest(event) && event.httpMethod === 'GET') {
+    return jsonResponse(200, {
+      status: 'ok',
+      catalogLoaded: CATALOG_ITEMS.size > 0,
+      schemaLoaded: true
+    });
+  }
+
+  if (event.httpMethod !== 'POST') {
+    const validated = validateResponse({
+      ok: false,
       cartUpdates: [],
-      message: mapAiErrorMessage(error?.status)
-    }));
+      reply: 'Metodo non consentito.'
+    });
+
+    return jsonResponse(405, validated);
+  }
+
+  try {
+    const parsedBody = parseBody(event.body);
+    if (!parsedBody || typeof parsedBody !== 'object') {
+      const invalidBodyResponse = validateResponse({
+        ok: false,
+        cartUpdates: [],
+        reply: 'Body richiesta non valido.'
+      });
+
+      logExecution({
+        intent: 'invalid_body',
+        toolUsed: null,
+        validation: 'invalid',
+        finalCartDelta: [],
+        executionTimeMs: Date.now() - startedAt,
+        status: 'error',
+        error: 'invalid_body'
+      });
+
+      return jsonResponse(200, invalidBodyResponse);
+    }
+
+    const message = String(parsedBody.message || parsedBody.prompt || '').trim();
+    if (!message) {
+      const missingMessageResponse = validateResponse({
+        ok: false,
+        cartUpdates: [],
+        reply: 'Messaggio mancante.'
+      });
+
+      logExecution({
+        intent: 'missing_message',
+        toolUsed: null,
+        validation: 'invalid',
+        finalCartDelta: [],
+        executionTimeMs: Date.now() - startedAt,
+        status: 'error',
+        error: 'missing_message'
+      });
+
+      return jsonResponse(200, missingMessageResponse);
+    }
+
+    const routed = routeDomain(message);
+    const recommendationIntent =
+      routed.intent !== 'add' && routed.intent !== 'build'
+        ? detectRecommendationIntent(message, routed.domain)
+        : false;
+
+    if (routed.domain === 'PANINO') {
+      const paninoResponse = handlePanino({ message, intent: routed.intent });
+      const validatedPanino = validateResponse(paninoResponse);
+
+      logExecution({
+        intent: 'panino',
+        toolUsed: validatedPanino.cartUpdates.length ? 'add_item' : null,
+        validation: validatedPanino.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedPanino.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedPanino.ok ? 'success' : 'error',
+        error: validatedPanino.ok ? null : validatedPanino.reply
+      });
+
+      return jsonResponse(200, validatedPanino);
+    }
+
+    if (recommendationIntent) {
+      const recommendation = buildRecommendationResponse(message);
+      if (recommendation) {
+        const validatedRecommendation = validateResponse(recommendation);
+
+        logExecution({
+          intent: 'recommendation',
+          toolUsed: null,
+          validation: validatedRecommendation.ok ? 'valid' : 'invalid',
+          finalCartDelta: validatedRecommendation.cartUpdates,
+          executionTimeMs: Date.now() - startedAt,
+          status: validatedRecommendation.ok ? 'success' : 'error',
+          error: validatedRecommendation.ok ? null : validatedRecommendation.reply
+        });
+
+        return jsonResponse(200, validatedRecommendation);
+      }
+    }
+
+    const directNameResponse = runExactNameMatch(message, routed.domain);
+    if (directNameResponse) {
+      const validatedNameMatch = validateResponse(directNameResponse);
+      const nameCartType = validatedNameMatch.cartUpdates[0]?.type;
+      const nameToolUsed =
+        nameCartType === 'REMOVE_ITEM' ? 'remove_item' : nameCartType || 'add_item';
+
+      logExecution({
+        intent: 'direct_name_match',
+        toolUsed: nameToolUsed,
+        validation: validatedNameMatch.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedNameMatch.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedNameMatch.ok ? 'success' : 'error',
+        error: validatedNameMatch.ok ? null : 'invalid_direct_name'
+      });
+
+      return jsonResponse(200, validatedNameMatch);
+    }
+
+    const directResponse = runDirectMatch(message);
+    if (directResponse) {
+      const validatedDirect = validateResponse(directResponse);
+      const directCartType = validatedDirect.cartUpdates[0]?.type;
+      const directToolUsed =
+        directCartType === 'REMOVE_ITEM' ? 'remove_item' : directCartType || null;
+
+      logExecution({
+        intent: 'direct_match',
+        toolUsed: directToolUsed,
+        validation: validatedDirect.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedDirect.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedDirect.ok ? 'success' : 'error',
+        error: validatedDirect.ok ? null : 'invalid_direct_match'
+      });
+
+      return jsonResponse(200, validatedDirect);
+    }
+
+    const deterministicResponse = runDeterministicIngredientMatch(message);
+    if (deterministicResponse) {
+      const validatedDeterministic = validateResponse(deterministicResponse);
+
+      logExecution({
+        intent: 'deterministic_ingredients',
+        toolUsed:
+          validatedDeterministic.cartUpdates.length > 0
+            ? validatedDeterministic.cartUpdates[0]?.type === 'REMOVE_ITEM'
+              ? 'remove_item'
+              : 'add_item'
+            : null,
+        validation: validatedDeterministic.ok ? 'valid' : 'invalid',
+        finalCartDelta: validatedDeterministic.cartUpdates,
+        executionTimeMs: Date.now() - startedAt,
+        status: validatedDeterministic.ok ? 'success' : 'error',
+        error: validatedDeterministic.ok ? null : 'invalid_ingredient_match'
+      });
+
+      return jsonResponse(200, validatedDeterministic);
+    }
+
+    let fallbackLogData = null;
+
+    if (!process.env.OPENAI_API_KEY) {
+      fallbackLogData = {
+        intent: 'info',
+        toolUsed: null,
+        validation: 'skipped',
+        finalCartDelta: [],
+        status: 'success',
+        error: null
+      };
+    } else {
+      let aiResponse = null;
+      try {
+        aiResponse = await runLLM(message);
+      } catch (err) {
+        fallbackLogData = {
+          intent: 'llm_timeout',
+          toolUsed: null,
+          validation: 'skipped',
+          finalCartDelta: [],
+          status: 'error',
+          error: err && err.message ? err.message : 'llm_error'
+        };
+      }
+
+      if (aiResponse) {
+        const toolCalls = collectToolCalls(aiResponse?.output);
+        const primaryToolCall = toolCalls[0];
+
+        if (!primaryToolCall) {
+          fallbackLogData = {
+            intent: 'none',
+            toolUsed: null,
+            validation: 'skipped',
+            finalCartDelta: [],
+            status: 'success',
+            error: null
+          };
+        } else {
+          const toolConfig = TOOL_CONFIG[primaryToolCall.name];
+          if (!toolConfig) {
+            const invalidTool = validateResponse({
+              ok: false,
+              cartUpdates: [],
+              reply: 'INVALID_TOOL_PAYLOAD'
+            });
+            return jsonResponse(200, invalidTool);
+          }
+
+          const parsed = parseWith(toolConfig.schema, parseArgs(primaryToolCall.arguments));
+          if (!parsed.ok) {
+            logExecution({
+              intent: primaryToolCall.name,
+              toolUsed: primaryToolCall.name,
+              validation: 'invalid',
+              finalCartDelta: [],
+              executionTimeMs: Date.now() - startedAt,
+              status: 'error',
+              error: 'INVALID_TOOL_PAYLOAD'
+            });
+            const invalidTool = validateResponse({
+              ok: false,
+              cartUpdates: [],
+              reply: 'INVALID_TOOL_PAYLOAD'
+            });
+            return jsonResponse(200, invalidTool);
+          }
+
+          const execution = toolConfig.executor(parsed.data);
+          if (execution.ok === false && execution.error) {
+            logExecution({
+              intent: primaryToolCall.name,
+              toolUsed: primaryToolCall.name,
+              validation: 'invalid',
+              finalCartDelta: [],
+              executionTimeMs: Date.now() - startedAt,
+              status: 'error',
+              error: execution.error
+            });
+            const invalidTool = validateResponse({
+              ok: false,
+              cartUpdates: [],
+              reply: 'INVALID_TOOL_PAYLOAD'
+            });
+            return jsonResponse(200, invalidTool);
+          }
+
+          const validatedResponse = validateResponse(execution);
+
+          logExecution({
+            intent: primaryToolCall.name,
+            toolUsed: primaryToolCall.name,
+            validation: validatedResponse.ok ? 'valid' : 'invalid',
+            finalCartDelta: validatedResponse.cartUpdates,
+            executionTimeMs: Date.now() - startedAt,
+            status: validatedResponse.ok ? 'success' : 'error',
+            error: validatedResponse.ok ? null : validatedResponse.reply
+          });
+
+          return jsonResponse(200, validatedResponse);
+        }
+      }
+    }
+
+    const fallback = validateResponse({
+      ok: true,
+      cartUpdates: [],
+      reply: 'Puoi indicarmi il nome esatto della pizza?'
+    });
+
+    if (fallbackLogData) {
+      logExecution({
+        ...fallbackLogData,
+        executionTimeMs: Date.now() - startedAt
+      });
+    }
+
+    return jsonResponse(200, fallback);
+  } catch (error) {
+    const fallback = validateResponse(FALLBACK_RESPONSE);
+
+    logExecution({
+      intent: 'unknown',
+      toolUsed: null,
+      validation: 'error',
+      finalCartDelta: [],
+      executionTimeMs: Date.now() - startedAt,
+      status: 'error',
+      error: error && error.message ? error.message : 'unknown_error'
+    });
+
+    return jsonResponse(200, fallback);
   }
 };
