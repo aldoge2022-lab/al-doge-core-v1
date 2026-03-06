@@ -22,6 +22,13 @@
       "paninoAllowed": true
     },
     {
+      "id": "bufala",
+      "name": "Mozzarella di bufala",
+      "supplement": 3,
+      "allergens": ["lattosio"],
+      "paninoAllowed": true
+    },
+    {
       "id": "insalata",
       "name": "Insalata",
       "supplement": 1.5,
