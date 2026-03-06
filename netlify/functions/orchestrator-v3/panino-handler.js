@@ -17,26 +17,19 @@ function getPaninoWhitelist() {
   return getIngredients().filter((ingredient) => ingredient?.paninoAllowed);
 }
 
-function extractIngredients(message) {
+function extractRequestedIngredients(message) {
   const normalizedMessage = normalizeText(message);
-  const whitelist = getPaninoWhitelist();
-  const mapByName = new Map();
+  const catalog = getIngredients();
+  const mapById = new Map();
 
-  whitelist.forEach((ingredient) => {
+  catalog.forEach((ingredient) => {
     const key = normalizeText(ingredient.name || ingredient.id);
-    if (key) {
-      mapByName.set(key, ingredient.id);
+    if (key && normalizedMessage.includes(key)) {
+      mapById.set(ingredient.id, ingredient);
     }
   });
 
-  const foundIngredientIds = [];
-  mapByName.forEach((ingredientId, normalizedName) => {
-    if (normalizedMessage.includes(normalizedName)) {
-      foundIngredientIds.push(ingredientId);
-    }
-  });
-
-  return Array.from(new Set(foundIngredientIds));
+  return Array.from(mapById.values());
 }
 
 function buildPaninoItem(ingredients, qty) {
@@ -58,11 +51,28 @@ function getMaxIngredients() {
 }
 
 function handlePanino({ message, intent }) {
-  const ingredients = extractIngredients(message);
-  const maxIngredients = getMaxIngredients();
+  const requestedIngredients = extractRequestedIngredients(message);
+  const whitelist = getPaninoWhitelist();
   const effectiveIntent = intent === 'info' ? 'build' : intent;
+  const maxIngredients = getMaxIngredients();
 
-  if (ingredients.length > maxIngredients) {
+  let validIngredients = requestedIngredients.filter((ingredient) => ingredient?.paninoAllowed);
+
+  // HARD FIX: prevent empty panino when explicit ingredient requested
+  if (
+    requestedIngredients &&
+    requestedIngredients.length > 0 &&
+    validIngredients.length === 0
+  ) {
+    // forza inclusione ingredienti richiesti se esistono nel catalogo
+    validIngredients = requestedIngredients.filter((i) => i.paninoAllowed !== false);
+  }
+
+  const ingredientIds = Array.from(
+    new Set((validIngredients || []).map((ingredient) => ingredient?.id).filter(Boolean))
+  );
+
+  if (ingredientIds.length > maxIngredients) {
     return {
       ok: false,
       cartUpdates: [],
@@ -78,18 +88,42 @@ function handlePanino({ message, intent }) {
     };
   }
 
+  if (ingredientIds.length === 0) {
+    if (requestedIngredients.length === 0 && whitelist.length > 0) {
+      const defaultIngredients = whitelist.slice(
+        0,
+        Math.min(whitelist.length, Math.min(3, maxIngredients))
+      );
+      const defaultIds = defaultIngredients.map((ingredient) => ingredient.id).filter(Boolean);
+      const qty = parseQty(message);
+      const cartItem = buildPaninoItem(defaultIds, qty);
+
+      return {
+        ok: true,
+        cartUpdates: [cartItem],
+        reply: `Panino custom aggiunto (${qty}x) con ${defaultIds.length} ingredienti.`
+      };
+    }
+
+    return {
+      ok: true,
+      cartUpdates: [],
+      reply: 'Ti preparo un panino personalizzato perfetto per te.'
+    };
+  }
+
   const qty = parseQty(message);
-  const cartItem = buildPaninoItem(ingredients, qty);
+  const cartItem = buildPaninoItem(ingredientIds, qty);
 
   return {
     ok: true,
     cartUpdates: [cartItem],
-    reply: `Panino custom aggiunto (${qty}x) con ${ingredients.length} ingredienti.`
+    reply: `Panino custom aggiunto (${qty}x) con ${ingredientIds.length} ingredienti.`
   };
 }
 
 module.exports = {
   handlePanino,
-  extractIngredients,
+  extractRequestedIngredients,
   parseQty
 };

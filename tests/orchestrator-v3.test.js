@@ -297,6 +297,38 @@ test('panino intent triggers panino generator', async () => {
   assert.equal(body.ok, true);
   assert.equal(body.cartUpdates.length, 1);
   assert.equal(body.cartUpdates[0].type, 'PANINO');
+  assert.ok((body.cartUpdates[0].ingredients || []).length > 0);
+});
+
+test('panino with explicit bufala includes requested ingredient', async () => {
+  delete process.env.OPENAI_API_KEY;
+  const { handler } = require('../netlify/functions/ai-orchestrator');
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Panino con bufala' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.equal(body.ok, true);
+  assert.equal(body.cartUpdates.length, 1);
+  assert.equal(body.cartUpdates[0].type, 'PANINO');
+  assert.ok(body.cartUpdates[0].ingredients.includes('bufala'));
+});
+
+test('panino with blocked ingredient returns generic reply and no empty panino', async () => {
+  delete process.env.OPENAI_API_KEY;
+  const { handler } = require('../netlify/functions/ai-orchestrator');
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ message: 'Panino con tonno' })
+  });
+
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body);
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.cartUpdates, []);
+  assert.equal(body.reply, 'Ti preparo un panino personalizzato perfetto per te.');
 });
 
 test('keeps direct name matching via AI tools unchanged', async () => {
