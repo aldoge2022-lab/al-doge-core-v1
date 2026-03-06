@@ -52,8 +52,24 @@ function generatePizza({ richiesta, menu }) {
 }
 
 function generatePanino({ richiesta, menu }) {
-  const available = dedupe((menu || []).flatMap((item) => item.ingredienti || [])).filter((value) => !String(value).toLowerCase().includes('tonno'));
-  const ingredienti = available.slice(0, 4);
+  const available = dedupe((menu || []).flatMap((item) => item.ingredienti || [])).filter(
+    (value) => !String(value).toLowerCase().includes('tonno')
+  );
+  const requestedIngredients = dedupe(
+    String(richiesta || '')
+      .split(/[^a-zA-Zà-ùÀ-Ù0-9]+/)
+      .map((token) => token.toLowerCase())
+      .filter(Boolean)
+  );
+
+  let ingredienti = available.slice(0, 4);
+
+  // HARD FIX: prevent empty panino when explicit ingredient requested
+  if (requestedIngredients.length > 0 && ingredienti.length === 0) {
+    // forza inclusione ingredienti richiesti se esistono nel catalogo
+    ingredienti = requestedIngredients.filter((token) => available.includes(token));
+  }
+
   const built = buildItem({
     payload: {
       custom: true,
@@ -64,7 +80,17 @@ function generatePanino({ richiesta, menu }) {
     impasti: DEFAULT_IMPASTI
   });
 
-  const details = built.statusCode === 200 ? built.body : { prezzo: 5, ingredienti: [] };
+  let details = built.statusCode === 200 ? built.body : { prezzo: 5, ingredienti: [] };
+
+  if ((!details.ingredienti || details.ingredienti.length === 0) && ingredienti.length === 0) {
+    return {
+      nome: 'Panino Personalizzato',
+      ingredienti: [],
+      prezzo: 5,
+      reply: 'Ti preparo un panino personalizzato perfetto per te.'
+    };
+  }
+
   return {
     nome: 'Panino Personalizzato',
     ingredienti: details.ingredienti,
