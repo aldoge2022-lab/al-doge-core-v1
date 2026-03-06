@@ -33,7 +33,7 @@ test('ai-orchestrator responds gracefully when message is missing', async () => 
   assert.deepEqual(body.cartUpdates, []);
 });
 
-test('panino con bufala non ritorna pizza', async () => {
+test('panino con bufala non restituisce pizza', async () => {
   const { handler } = require('../netlify/functions/ai-orchestrator');
   const response = await handler({
     httpMethod: 'POST',
@@ -65,6 +65,7 @@ test('direct pizza name produces structured cart update', async () => {
   assert.equal(item.id, 'margherita');
   assert.equal(item.name, 'Margherita');
   assert.equal(typeof body.reply, 'string');
+  assert.equal(body.reply.toLowerCase().includes('panino'), false);
 });
 
 test('orchestrator returns coherent reply without OPENAI_API_KEY', async () => {
