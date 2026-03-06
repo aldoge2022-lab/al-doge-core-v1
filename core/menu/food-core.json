@@ -15,7 +15,7 @@
       "paninoAllowed": true
     },
     {
-      "id": "mozzarella_di_bufala",
+      "id": "bufala",
       "name": "Mozzarella di bufala",
       "supplement": 3,
       "allergens": ["lattosio"],
