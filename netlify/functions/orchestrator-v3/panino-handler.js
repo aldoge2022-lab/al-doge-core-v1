@@ -30,8 +30,14 @@ function extractIngredients(message) {
   });
 
   const foundIngredientIds = [];
+
   mapByName.forEach((ingredientId, normalizedName) => {
-    if (normalizedMessage.includes(normalizedName)) {
+    const words = normalizedName.split(' ').filter(Boolean);
+
+    if (
+      normalizedMessage.includes(normalizedName) ||
+      words.some((word) => normalizedMessage.includes(word))
+    ) {
       foundIngredientIds.push(ingredientId);
     }
   });
