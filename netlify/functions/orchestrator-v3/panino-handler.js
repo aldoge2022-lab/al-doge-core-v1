@@ -56,7 +56,9 @@ function handlePanino({ message, intent }) {
   const effectiveIntent = intent === 'info' ? 'build' : intent;
   const maxIngredients = getMaxIngredients();
 
-  let validIngredients = requestedIngredients.filter((ingredient) => ingredient?.paninoAllowed);
+  let validIngredients = requestedIngredients.filter(
+    (ingredient) => ingredient?.paninoAllowed === true
+  );
 
   // HARD FIX: prevent empty panino when explicit ingredient requested
   if (
@@ -64,7 +66,7 @@ function handlePanino({ message, intent }) {
     requestedIngredients.length > 0 &&
     validIngredients.length === 0
   ) {
-    // forza inclusione ingredienti richiesti se esistono nel catalogo
+    // forza inclusione ingredienti richiesti se esistono nel catalogo (consente ingredienti senza flag esplicito)
     validIngredients = requestedIngredients.filter((i) => i.paninoAllowed !== false);
   }
 
@@ -90,10 +92,7 @@ function handlePanino({ message, intent }) {
 
   if (ingredientIds.length === 0) {
     if (requestedIngredients.length === 0 && whitelist.length > 0) {
-      const defaultIngredients = whitelist.slice(
-        0,
-        Math.min(whitelist.length, Math.min(3, maxIngredients))
-      );
+      const defaultIngredients = whitelist.slice(0, Math.min(whitelist.length, 3, maxIngredients));
       const defaultIds = defaultIngredients.map((ingredient) => ingredient.id).filter(Boolean);
       const qty = parseQty(message);
       const cartItem = buildPaninoItem(defaultIds, qty);

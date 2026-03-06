@@ -60,15 +60,14 @@ function generatePanino({ richiesta, menu }) {
       .split(/[^a-zA-Zà-ùÀ-Ù0-9]+/)
       .map((token) => token.toLowerCase())
       .filter(Boolean)
-      .filter((token) => available.includes(token))
   );
 
   let ingredienti = available.slice(0, 4);
 
   // HARD FIX: prevent empty panino when explicit ingredient requested
-  if (requestedIngredients && requestedIngredients.length > 0 && ingredienti.length === 0) {
+  if (requestedIngredients.length > 0 && ingredienti.length === 0) {
     // forza inclusione ingredienti richiesti se esistono nel catalogo
-    ingredienti = requestedIngredients.filter((i) => i);
+    ingredienti = requestedIngredients.filter((token) => available.includes(token));
   }
 
   const built = buildItem({
