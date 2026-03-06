@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
 
-      const response = await fetch("/.netlify/functions/ordine-ai", {
+      const response = await fetch("/.netlify/functions/ai-orchestrator", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
