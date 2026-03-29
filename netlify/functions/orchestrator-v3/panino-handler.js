@@ -66,7 +66,7 @@ function getMaxIngredients() {
 function handlePanino({ message, intent }) {
   const ingredients = extractIngredients(message);
   const maxIngredients = getMaxIngredients();
-  const effectiveIntent = intent === 'info' ? 'build' : intent;
+  const effectiveIntent = intent === 'info' && ingredients.length ? 'build' : intent;
 
   if (ingredients.length > maxIngredients) {
     return {
